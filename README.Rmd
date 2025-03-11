@@ -1,0 +1,58 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# lu.ml
+
+lu.ml is an R package that allows you to create the xgboost-based machine learning instrument from Lutz and Sand. 
+
+## Installation
+
+``` r
+# install.packages("remotes")
+remotes::install_github("ChandlerLutz/lu.ml")
+```
+
+## Example
+
+This example compute the LU-ML instrument for Mian and Sufi (2014, Econometrica):
+
+```{r}
+library(data.table)
+library(lu.ml)
+
+# Load the Mian-Sufi 2014 data
+data(dt_mian_sufi_2014)
+# Load the county-level land unavailability data for 2010
+data(dt_cnty_lu_2010)
+
+# The house price data must have the columns
+# `GEOID`, `index` (of type `Date`) and `hp.target`
+dt_mian_sufi_2014 <- dt_mian_sufi_2014 |> 
+  _[, .(GEOID = fips, index = as.Date("2002-01-01"), hp.target = house.net.worth)] |> 
+  _[!is.na(hp.target)]
+
+# Prepare the land unavailability data: select GEOID and land unavailability columns
+# Note that the GEOID must match between the house price data and
+# the land unavailability data
+dt_cnty_lu_2010 <- dt_cnty_lu_2010 |>
+  _[, .(GEOID, unavailable = .SD),
+    .SDcols = grep("unavailable", names(dt_cnty_lu_2010), value = TRUE)]
+
+out <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
+
+# The column `lu_ml` is the instrument
+out[, cor(hp.target, lu_ml)]
+print(out)
+```

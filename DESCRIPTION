@@ -1,0 +1,22 @@
+Package: lu.ml
+Title: Create the Land Unavailability (LU) Machine Learning (ML) instrument
+Version: 0.0.1
+Authors@R: 
+    person("Chandler", "Lutz", , "chandler.lut@charlotte.edu", role = c("aut", "cre"))
+Description: Create the Land Unavailability (LU) Machine Learning (ML) instrument for house prices.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Suggests: 
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Imports: 
+    data.table,
+    future,
+    future.apply,
+    magrittr,
+    xgboost
+Depends: 
+    R (>= 2.10)
+LazyData: true
