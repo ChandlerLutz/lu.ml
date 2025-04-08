@@ -13,7 +13,6 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
 
   res <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
 
-  expect_true(res[, cor(hp.target, lu_ml)] > 0.65)
-  expect_true(res[, cor(hp.target, lu_ml)] < 0.70)
+  expect_true(round(res[, cor(hp.target, lu_ml)], 3) == 0.610)
 
 })

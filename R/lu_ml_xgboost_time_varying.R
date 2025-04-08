@@ -88,6 +88,9 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
   DT.hp <- DT.hp %>%
     .[order(GEOID, index)]
 
+  DT.lu <- DT.lu %>%
+    .[order(GEOID)]
+
   if (DT.hp[, sum(is.na(hp.target))] > 0) {
     stop("Error: In lu_ml_xgboost_time_varying(), there are missing values in hp.target.")
   }
@@ -116,6 +119,12 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
   if (var(num.obs.by.geoid) != 0) {
     print("Warning: In `lu_ml_xgboost_time_varying()`, the `DT.hp` is not a balanced panel.")
   }
+
+  DT.hp <- DT.hp %>%
+    .[order(GEOID, index)]
+
+  DT.lu <- DT.lu %>%
+    .[order(GEOID)]
   
   geoids <- DT.hp[, unique(GEOID)]
 
@@ -133,7 +142,9 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     .[, test.geoids := list()]
 
   for (i in 1:repeats) {
-    geoids.rand <- sample(geoids, length(geoids))
+    geoids.rand <- withr::with_seed(seed = 1234, {
+      sample(geoids, length(geoids))
+    })
     test.ids.list <- chunk2(geoids.rand, folds)
     for (j in 1:folds) {
       test.ids <- test.ids.list[[j]]
@@ -155,8 +166,9 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     geoids <- DT[, unique(GEOID)]
 
     train.geoids <- geoids %>% .[!(. %chin% test.geoids)]
-    tune.nrounds.geoids <- sample(train.geoids,
-                                  size = floor(length(train.geoids) * 0.75))
+    tune.nrounds.geoids <- withr::with_seed(seed = 1234, {
+      sample(train.geoids, size = floor(length(train.geoids) * 0.75))
+    })
     validation.nrounds.geoids <- train.geoids %>% .[!(. %chin% tune.nrounds.geoids)]
 
     f_get_xgboost_dmat <- function(DT) {
