@@ -54,7 +54,7 @@
 #' @import glmnet
 #' @import future
 #' @import future.apply
-#' @importFrom stats predict var
+#' @importFrom stats predict var model.matrix
 #'
 #' @examples
 #' \dontrun{
