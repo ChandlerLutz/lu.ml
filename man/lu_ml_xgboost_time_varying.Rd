@@ -9,7 +9,8 @@ lu_ml_xgboost_time_varying(
   DT.lu,
   repeats = 5,
   folds = 5,
-  compute.lu.ml.parts = FALSE
+  compute.lu.ml.parts = FALSE,
+  seed = 1234
 )
 }
 \arguments{
@@ -27,6 +28,9 @@ Defaults to 5.}
 
 \item{compute.lu.ml.parts}{A logical value indicating whether to compute
 predictions for specific land use components. Defaults to FALSE.}
+
+\item{seed}{An integer seed for reproducibility of random sampling and cross-validation
+folds. Defaults to 1234.}
 }
 \value{
 A data.table containing the original house price data (\code{DT.hp}) merged

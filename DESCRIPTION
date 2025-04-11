@@ -15,6 +15,7 @@ Imports:
     data.table,
     future,
     future.apply,
+    glmnet,
     magrittr,
     withr,
     xgboost

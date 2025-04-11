@@ -15,6 +15,8 @@
 #'   Defaults to 5.
 #' @param compute.lu.ml.parts A logical value indicating whether to compute
 #'   predictions for specific land use components. Defaults to FALSE.
+#' @param seed An integer seed for reproducibility of random sampling and cross-validation
+#'   folds. Defaults to 1234.
 #'
 #' @return A data.table containing the original house price data (`DT.hp`) merged
 #'   with out-of-sample predictions from the XGBoost model. If
@@ -79,7 +81,7 @@
 #'
 #' @export
 lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
-                                       compute.lu.ml.parts = FALSE) {
+                                       compute.lu.ml.parts = FALSE, seed = 1234) {
 
   ## For R cmd check
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL
@@ -142,7 +144,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     .[, test.geoids := list()]
 
   for (i in 1:repeats) {
-    geoids.rand <- withr::with_seed(seed = 1234, {
+    geoids.rand <- withr::with_seed(seed = seed, {
       sample(geoids, length(geoids))
     })
     test.ids.list <- chunk2(geoids.rand, folds)
@@ -166,7 +168,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     geoids <- DT[, unique(GEOID)]
 
     train.geoids <- geoids %>% .[!(. %chin% test.geoids)]
-    tune.nrounds.geoids <- withr::with_seed(seed = 1234, {
+    tune.nrounds.geoids <- withr::with_seed(seed = seed, {
       sample(train.geoids, size = floor(length(train.geoids) * 0.75))
     })
     validation.nrounds.geoids <- train.geoids %>% .[!(. %chin% tune.nrounds.geoids)]
