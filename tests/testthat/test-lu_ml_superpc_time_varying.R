@@ -17,9 +17,9 @@ test_that("lu_ml_superpc_time_varying() works for Supervised PCA with Mian and S
   )
 
   expect_true(is.data.table(result))
-  expect_equal(names(result), c("GEOID", "index", "hp.target", "lu_ml_pc1"))
+  expect_equal(names(result), c("GEOID", "index", "hp.target", "lu_ml_superpc1"))
   expect_equal(
-    result[, cor(hp.target, lu_ml_pc1)] %>% round(2),
+    result[, cor(hp.target, lu_ml_superpc1)] %>% round(2),
     0.28
   )
 

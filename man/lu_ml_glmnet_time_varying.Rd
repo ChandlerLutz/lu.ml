@@ -98,7 +98,7 @@ out <- lu_ml_glmnet_time_varying(
 )
 
 # Correlation between predicted and actual house prices
-cor(out$hp.target, out$lu_ml)
+cor(out$hp.target, out$lu_ml_ridge)
 }
 
 }

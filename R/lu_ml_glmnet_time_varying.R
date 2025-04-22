@@ -81,7 +81,7 @@
 #' )
 #'
 #' # Correlation between predicted and actual house prices
-#' cor(out$hp.target, out$lu_ml)
+#' cor(out$hp.target, out$lu_ml_ridge)
 #' }
 #'
 #' @export
@@ -202,5 +202,9 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
 
   DT.oos.pred.panel <- rbindlist(lapply(indices, f_get_glmnet_lu_predictions))
   DT.oos.pred.panel <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
+
+  DT.oos.pred.panel <- setnames(DT.oos.pred.panel, "lu_ml",
+                                paste0("lu_ml_", penalty.type))
+  
   return(DT.oos.pred.panel)
 }

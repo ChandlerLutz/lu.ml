@@ -18,7 +18,8 @@ test_that("lu_ml_glmnet_time_varying() works for ridge regression with Mian and 
   res <- lu_ml_glmnet_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010,
                                    penalty.type = "ridge") 
 
-  expect_equal(round(res[, cor(hp.target, lu_ml)], 2), 0.34)
+  expect_equal(names(res), c("GEOID", "index", "hp.target", "lu_ml_ridge"))
+  expect_equal(round(res[, cor(hp.target, lu_ml_ridge)], 2), 0.34)
 
 })
 
@@ -42,7 +43,8 @@ test_that("lu_ml_glmnet_time_varying() works for lasso regression with Mian and 
   res <- lu_ml_glmnet_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010,
                                    penalty.type = "lasso")
 
-  expect_equal(round(res[, cor(hp.target, lu_ml)], 2), 0.37)
+  expect_equal(names(res), c("GEOID", "index", "hp.target", "lu_ml_lasso"))
+  expect_equal(round(res[, cor(hp.target, lu_ml_lasso)], 2), 0.37)
 
 })
 
@@ -67,6 +69,7 @@ test_that("lu_ml_glmnet_time_varying() works for elastic net regression with Mia
   res <- lu_ml_glmnet_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010,
                                    penalty.type = "elasticnet")
 
-  expect_equal(round(res[, cor(hp.target, lu_ml)], 2), 0.37)
+  expect_equal(names(res), c("GEOID", "index", "hp.target", "lu_ml_elasticnet"))
+  expect_equal(round(res[, cor(hp.target, lu_ml_elasticnet)], 2), 0.37)
 
 })

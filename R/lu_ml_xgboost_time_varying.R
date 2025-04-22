@@ -75,7 +75,7 @@
 #' out <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
 #'
 #' # Calculate and print the correlation between the house price target and the generated instrument
-#' print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml])))
+#' print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml_xgboost])))
 #'
 #' # Print the resulting data.table
 #' print(out)
@@ -261,7 +261,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     ##                      test.geoids = DT.est$test.geoids)
     
     DT.oos.pred.all <- lapply(list.pred.all, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml = mean(lu.best.xgboost)), by = .(GEOID, index)]
+      .[, .(lu_ml_xgboost = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
     if (compute.lu.ml.parts == FALSE)
       return(DT.oos.pred.all)
@@ -284,7 +284,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     future::plan(future::sequential())
     
     DT.oos.pred.parts <- lapply(list.pred.parts, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_parts = mean(lu.best.xgboost)), by = .(GEOID, index)]
+      .[, .(lu_ml_xgboost_parts = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
 
     ## Total 
@@ -305,7 +305,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     future::plan(future::sequential())
     
     DT.oos.pred.total <- lapply(list.pred.total, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_total = mean(lu.best.xgboost)), by = .(GEOID, index)]
+      .[, .(lu_ml_xgboost_total = mean(lu.best.xgboost)), by = .(GEOID, index)]
     
     ## Slope 
     slope.cols <- names(DT) %>% .[grepl("^slope", x = .)]
@@ -325,7 +325,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     future::plan(future::sequential())
     
     DT.oos.pred.slope <- lapply(list.pred.slope, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_slope = mean(lu.best.xgboost)), by = .(GEOID, index)]
+      .[, .(lu_ml_xgboost_slope = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
     ## Water 
     water.cols <- names(DT) %>% .[grepl("^water", x = .)]
@@ -345,7 +345,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     future::plan(future::sequential())
     
     DT.oos.pred.water <- lapply(list.pred.water, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_water = mean(lu.best.xgboost)), by = .(GEOID, index)]
+      .[, .(lu_ml_xgboost_water = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
     ## Wetlands 
     wetlands.cols <- names(DT) %>% .[grepl("^wetlands", x = .)]
@@ -365,7 +365,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     future::plan(future::sequential())
     
     DT.oos.pred.wetlands <- lapply(list.pred.wetlands, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_wetlands = mean(lu.best.xgboost)), by = .(GEOID, index)]
+      .[, .(lu_ml_xgboost_wetlands = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
     DT.oos.pred <- merge(
       DT.oos.pred.all, DT.oos.pred.parts, by = c("GEOID", "index")

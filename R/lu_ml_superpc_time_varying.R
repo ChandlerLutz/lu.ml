@@ -18,7 +18,7 @@
 #'
 #' @return A `data.table` containing the original house price data
 #'   (`DT.hp`) merged with out-of-sample results from the supervised
-#'   PCA model. The column `lu_ml_pc1` contains the first supervised
+#'   PCA model. The column `lu_ml_superpc1` contains the first supervised
 #'   principal component score (i.e., the projected value) computed
 #'   for each test observation. These scores are computed out-of-sample:
 #'   the principal component factor loadings (i.e., the weights on the
@@ -73,11 +73,9 @@
 #'   seed = 42
 #' )
 #'
-#' # Correlation between predicted and actual house prices
-#' cor(out$hp.target, out$lu_ml)
 #'
 #' # Correlation between PC1 and house prices
-#' cor(out$hp.target, out$lu_pc1)
+#' cor(out$hp.target, out$lu_superpc1)
 #' }
 #'
 #' @export
@@ -85,7 +83,7 @@ lu_ml_superpc_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
                                        seed = 1234) {
   
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL
-  repeat.id <- fold.id <- lu_ml_pc1 <- NULL
+  repeat.id <- fold.id <- lu_ml_superpc1 <- NULL
 
   DT.hp <- DT.hp[order(GEOID, index)]
   DT.lu <- DT.lu[order(GEOID)]
@@ -142,7 +140,7 @@ lu_ml_superpc_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     )
   
     DT.oos.pred <- DT.test[, .(GEOID, index)][
-      , `:=`(lu_ml_pc1 = as.numeric(pred_vals$v.pred))]
+      , `:=`(lu_ml_superpc1 = as.numeric(pred_vals$v.pred))]
     return(list(DT.oos.pred = DT.oos.pred))
   }
 
@@ -161,7 +159,7 @@ lu_ml_superpc_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     future::plan(future::sequential())
 
     rbindlist(lapply(list.pred.all, \(x) x$DT.oos.pred)) %>%
-      .[, .(lu_ml_pc1 = mean(lu_ml_pc1)), by = .(GEOID, index)]
+      .[, .(lu_ml_superpc1 = mean(lu_ml_superpc1)), by = .(GEOID, index)]
   }
 
   DT.oos.pred.panel <- rbindlist(lapply(indices, f_get_superpc_lu_predictions))

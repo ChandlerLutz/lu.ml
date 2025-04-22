@@ -89,7 +89,7 @@ dt_cnty_lu_2010 <- dt_cnty_lu_2010 |>
 out <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
 
 # Calculate and print the correlation between the house price target and the generated instrument
-print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml])))
+print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml_xgboost])))
 
 # Print the resulting data.table
 print(out)

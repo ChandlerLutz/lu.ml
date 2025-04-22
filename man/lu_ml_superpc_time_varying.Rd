@@ -25,7 +25,7 @@ folds. Defaults to 1234.}
 \value{
 A \code{data.table} containing the original house price data
 (\code{DT.hp}) merged with out-of-sample results from the supervised
-PCA model. The column \code{lu_ml_pc1} contains the first supervised
+PCA model. The column \code{lu_ml_superpc1} contains the first supervised
 principal component score (i.e., the projected value) computed
 for each test observation. These scores are computed out-of-sample:
 the principal component factor loadings (i.e., the weights on the
@@ -80,11 +80,9 @@ out <- lu_ml_superpc_time_varying(
   seed = 42
 )
 
-# Correlation between predicted and actual house prices
-cor(out$hp.target, out$lu_ml)
 
 # Correlation between PC1 and house prices
-cor(out$hp.target, out$lu_pc1)
+cor(out$hp.target, out$lu_superpc1)
 }
 
 }
