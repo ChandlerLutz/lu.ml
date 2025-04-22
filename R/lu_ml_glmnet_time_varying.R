@@ -90,14 +90,12 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
                                       folds = 5,
                                       compute.lu.ml.parts = FALSE,
                                       penalty.type = c("ridge", "lasso", "elasticnet"),
-                                      seed = 1234) {
+                                      seed = 12) {
 
   penalty.type <- match.arg(penalty.type)
 
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL
-  repeat.id <- fold.id <- lu.best.glmnet <- N <- .N <- NULL
-
-  set.seed(seed)
+  repeat.id <- fold.id <- task.seed <- lu.best.glmnet <- N <- .N <- NULL
 
   DT.hp <- DT.hp[order(GEOID, index)]
   DT.lu <- DT.lu[order(GEOID)]
@@ -117,16 +115,19 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
   DT.est.base <- expand.grid(repeat.id = 1:repeats, fold.id = 1:folds) %>%
     setDT() %>%
     .[order(repeat.id)] %>%
-    .[, test.geoids := list()]
+    .[, test.geoids := list()] %>%
+    .[, task.seed := seed + repeat.id + fold.id]
 
   for (i in 1:repeats) {
-    geoids.rand <- withr::with_seed(seed, sample(geoids))
+    geoids.rand <- withr::with_seed(seed + i, sample(geoids))
     test.ids.list <- chunk2(geoids.rand, folds)
     for (j in 1:folds)
-      DT.est.base[repeat.id == i & fold.id == j, test.geoids := list(test.ids.list[[j]])]
+      DT.est.base[repeat.id == i & fold.id == j,
+                  test.geoids := list(test.ids.list[[j]])]
   }
 
-  f_train_glmnet <- function(DT, test.geoids) {
+  f_train_glmnet <- function(DT, test.geoids, train.seed) {
+
     train.geoids <- setdiff(unique(DT$GEOID), test.geoids)
     DT.train <- DT[GEOID %chin% train.geoids]
     DT.test  <- DT[GEOID %chin% test.geoids][order(GEOID, index)]
@@ -137,7 +138,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
     if (penalty.type == "elasticnet") {
       alpha.grid <- seq(0.1, 0.9, by = 0.1)
       cv.results <- lapply(alpha.grid, function(a) {
-        withr::with_seed(seed, {
+        withr::with_seed(train.seed, {
           cv <- cv.glmnet(x.train, y.train, alpha = a)
           list(cv = cv, alpha = a, mse = min(cv$cvm))
         })
@@ -146,7 +147,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
       glmnet.mod <- best$cv
     } else {
       alpha.val <- ifelse(penalty.type == "ridge", 0, 1)
-      glmnet.mod <- withr::with_seed(seed, {
+      glmnet.mod <- withr::with_seed(train.seed, {
         cv.glmnet(x.train, y.train, alpha = alpha.val)
       })
     }
@@ -158,16 +159,17 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
     return(list(DT.oos.pred = DT.oos.pred))
   }
 
-  f_get_glmnet_lu_predictions <- function(index) {
-    cat("Processing index:", as.character(index), "\n")
-    DT.est <- copy(DT.est.base)
-    DT <- DT.hp[index == index] %>% merge(DT.lu, by = "GEOID")
+  f_get_glmnet_lu_predictions <- function(index_val) {
+    cat("Processing index:", as.character(index_val), "\n")
+    DT.est <- copy(DT.est.base) %>%
+      .[, task.seed := task.seed + DT.hp[, which(unique(index) == c(index_val))]]
+    DT <- DT.hp[index == c(index_val)] %>% merge(DT.lu, by = "GEOID")
 
     future::plan(future::multisession(workers = future::availableCores()))
     list.pred.all <- future.apply::future_Map(f_train_glmnet,
                                               DT = list(DT),
                                               test.geoids = DT.est$test.geoids,
-                                              future.seed = TRUE)
+                                              train.seed = DT.est$task.seed)
     future::plan(future::sequential())
 
     DT.oos.pred.all <- rbindlist(lapply(list.pred.all, \(x) x$DT.oos.pred)) %>%
@@ -181,7 +183,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
         f_train_glmnet,
         DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", cols)]),
         test.geoids = DT.est$test.geoids,
-        future.seed = TRUE
+        future.seed = seed
       )
       rbindlist(lapply(list.pred, \(x) x$DT.oos.pred)) %>%
         .[, (name) := mean(lu.best.glmnet), by = .(GEOID, index)] %>%

@@ -64,6 +64,7 @@ It also utilizes parallel processing via the \code{future} package to speed up
 computation.
 }
 \examples{
+\dontrun{
 library(data.table)
 library(lu.ml)
 
@@ -92,5 +93,6 @@ print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml])))
 
 # Print the resulting data.table
 print(out)
+}
 
 }

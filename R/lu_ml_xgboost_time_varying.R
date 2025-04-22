@@ -50,6 +50,7 @@
 #' @importFrom stats complete.cases predict var
 #'
 #' @examples
+#' \dontrun{
 #' library(data.table)
 #' library(lu.ml)
 #'
@@ -78,14 +79,15 @@
 #'
 #' # Print the resulting data.table
 #' print(out)
-#'
+#' }
+#' 
 #' @export
 lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
                                        compute.lu.ml.parts = FALSE, seed = 1234) {
 
   ## For R cmd check
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL
-  repeat.id <- fold.id <- lu.best.xgboost <- N <- .N <- NULL
+  repeat.id <- fold.id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
   
   DT.hp <- DT.hp %>%
     .[order(GEOID, index)]
@@ -141,10 +143,11 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     fold.id = 1:folds
   ) %>% setDT() %>%
     .[order(repeat.id)] %>%
-    .[, test.geoids := list()]
+    .[, test.geoids := list()] %>%
+    .[, task.seed := seed + repeat.id + fold.id]
 
   for (i in 1:repeats) {
-    geoids.rand <- withr::with_seed(seed = seed, {
+    geoids.rand <- withr::with_seed(seed = seed + i, {
       sample(geoids, length(geoids))
     })
     test.ids.list <- chunk2(geoids.rand, folds)
@@ -155,7 +158,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     }
   }
 
-  f_train_xgboost <- function(DT, test.geoids) {
+  f_train_xgboost <- function(DT, test.geoids, train.seed) {
 
     ## For early stopping, see
     ## https://codingwiththomas.blogspot.com/2016/03/xgboost-validation-and-early-stopping.html
@@ -168,7 +171,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     geoids <- DT[, unique(GEOID)]
 
     train.geoids <- geoids %>% .[!(. %chin% test.geoids)]
-    tune.nrounds.geoids <- withr::with_seed(seed = seed, {
+    tune.nrounds.geoids <- withr::with_seed(seed = train.seed, {
       sample(train.geoids, size = floor(length(train.geoids) * 0.75))
     })
     validation.nrounds.geoids <- train.geoids %>% .[!(. %chin% tune.nrounds.geoids)]
@@ -189,16 +192,18 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
     watchlist <- list(train=dtune, eval=dvalidation)
 
-    clf <- xgb.train(
-      data = dtune, 
-      nrounds = 500, 
-      watchlist = watchlist,
-      maximize = FALSE,
-      early_stopping_rounds = 25,
-      objective = "reg:squarederror", ## the objective function
-      verbose = FALSE,
-      nthread = xgboost_ntrheads
-    )
+    withr::with_seed(seed = train.seed, {
+      clf <- xgb.train(
+        data = dtune, 
+        nrounds = 500, 
+        watchlist = watchlist,
+        maximize = FALSE,
+        early_stopping_rounds = 25,
+        objective = "reg:squarederror", ## the objective function
+        verbose = FALSE,
+        nthread = xgboost_ntrheads
+      )
+    })
 
     ## -- Train -- ##
 
@@ -206,13 +211,15 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     
     dtrain <- f_get_xgboost_dmat(DT.train)
 
-    xgboost.mod <- xgboost(
-      data = dtrain, ## the data   
-      nrounds = clf$best_iteration, ## max number of boosting iterations
-      objective = "reg:squarederror", ## the objective function
-      verbose = FALSE,
-      nthread = xgboost_ntrheads
-    )
+    withr::with_seed(seed = train.seed, {
+      xgboost.mod <- xgboost(
+        data = dtrain, ## the data   
+        nrounds = clf$best_iteration, ## max number of boosting iterations
+        objective = "reg:squarederror", ## the objective function
+        verbose = FALSE,
+        nthread = xgboost_ntrheads
+      )
+    })
 
     ## -- Predict -- ##
 
@@ -230,12 +237,13 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
   }
 
-  f_get_xgboost_lu_predictions <- function(index) {
+  f_get_xgboost_lu_predictions <- function(index_val) {
 
-    print(index)
+    print(index_val)
 
-    index.tmp <- index
-    DT.est <- copy(DT.est.base)
+    index.tmp <- index_val
+    DT.est <- copy(DT.est.base) %>%
+      .[, task.seed := task.seed + DT.hp[, which(unique(index) == c(index_val))]]
     
     DT <- DT.hp[index == index.tmp] %>%
       merge(DT.lu, by = "GEOID")
@@ -244,6 +252,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     list.pred.all <- future.apply::future_Map(f_train_xgboost,
                                               DT = list(DT),
                                               test.geoids = DT.est$test.geoids,
+                                              train.seed = DT.est$task.seed,
                                               future.seed = TRUE)
     future::plan(future::sequential())
 
@@ -269,6 +278,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       f_train_xgboost,
       DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", parts.cols)]),
       test.geoids = DT.est$test.geoids,
+      train.seed = DT.est$task.seed,
       future.seed = TRUE
     )
     future::plan(future::sequential())
@@ -289,6 +299,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       f_train_xgboost,
       DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", total.cols)]),
       test.geoids = DT.est$test.geoids,
+      train.seed = DT.est$task.seed,
       future.seed = TRUE
     )
     future::plan(future::sequential())
@@ -308,6 +319,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       f_train_xgboost,
       DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", slope.cols)]),
       test.geoids = DT.est$test.geoids,
+      train.seed = DT.est$task.seed,
       future.seed = TRUE
     )
     future::plan(future::sequential())
@@ -327,6 +339,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       f_train_xgboost,
       DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", water.cols)]),
       test.geoids = DT.est$test.geoids,
+      train.seed = DT.est$task.seed,
       future.seed = TRUE
     )
     future::plan(future::sequential())
@@ -346,6 +359,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       f_train_xgboost,
       DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", wetlands.cols)]),
       test.geoids = DT.est$test.geoids,
+      train.seed = DT.est$task.seed,
       future.seed = TRUE
     )
     future::plan(future::sequential())

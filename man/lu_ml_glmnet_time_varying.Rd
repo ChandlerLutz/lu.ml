@@ -11,7 +11,7 @@ lu_ml_glmnet_time_varying(
   folds = 5,
   compute.lu.ml.parts = FALSE,
   penalty.type = c("ridge", "lasso", "elasticnet"),
-  seed = 1234
+  seed = 12
 )
 }
 \arguments{

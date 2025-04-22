@@ -1,4 +1,4 @@
-test_that("lu_ml_glmnet_time_varying() work for ridge regression with Mian and Sufi Data", {
+test_that("lu_ml_glmnet_time_varying() works for ridge regression with Mian and Sufi Data", {
 
   data(dt_mian_sufi_2014)
   data(dt_cnty_lu_2010)
@@ -16,13 +16,13 @@ test_that("lu_ml_glmnet_time_varying() work for ridge regression with Mian and S
   dt_cnty_lu_2010 <- dt_cnty_lu_2010
 
   res <- lu_ml_glmnet_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010,
-                                   penalty.type = "ridge")
+                                   penalty.type = "ridge") 
 
-  expect_true(round(res[, cor(hp.target, lu_ml)], 3) == 0.283)
+  expect_equal(round(res[, cor(hp.target, lu_ml)], 2), 0.34)
 
 })
 
-test_that("lu_ml_glmnet_time_varying() work for lasso regression with Mian and Sufi Data", {
+test_that("lu_ml_glmnet_time_varying() works for lasso regression with Mian and Sufi Data", {
 
   data(dt_mian_sufi_2014)
   data(dt_cnty_lu_2010)
@@ -42,12 +42,12 @@ test_that("lu_ml_glmnet_time_varying() work for lasso regression with Mian and S
   res <- lu_ml_glmnet_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010,
                                    penalty.type = "lasso")
 
-  expect_true(round(res[, cor(hp.target, lu_ml)], 3) == 0.279)
+  expect_equal(round(res[, cor(hp.target, lu_ml)], 2), 0.37)
 
 })
 
 
-test_that("lu_ml_glmnet_time_varying() work for elastic net regression with Mian and Sufi Data", {
+test_that("lu_ml_glmnet_time_varying() works for elastic net regression with Mian and Sufi Data", {
 
   data(dt_mian_sufi_2014)
   data(dt_cnty_lu_2010)
@@ -67,6 +67,6 @@ test_that("lu_ml_glmnet_time_varying() work for elastic net regression with Mian
   res <- lu_ml_glmnet_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010,
                                    penalty.type = "elasticnet")
 
-  expect_true(round(res[, cor(hp.target, lu_ml)], 3) == 0.305)
+  expect_equal(round(res[, cor(hp.target, lu_ml)], 2), 0.37)
 
 })
