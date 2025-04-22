@@ -16,7 +16,7 @@
 #' @param compute.lu.ml.parts A logical value indicating whether to compute
 #'   predictions for specific land use components. Defaults to FALSE.
 #' @param seed An integer seed for reproducibility of random sampling and cross-validation
-#'   folds. Defaults to 1234.
+#'   folds. Defaults to 123.
 #'
 #' @return A data.table containing the original house price data (`DT.hp`) merged
 #'   with out-of-sample predictions from the XGBoost model. If
@@ -83,7 +83,7 @@
 #' 
 #' @export
 lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
-                                       compute.lu.ml.parts = FALSE, seed = 1234) {
+                                       compute.lu.ml.parts = FALSE, seed = 123) {
 
   ## For R cmd check
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL

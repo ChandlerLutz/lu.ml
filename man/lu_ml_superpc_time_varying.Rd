@@ -4,7 +4,7 @@
 \alias{lu_ml_superpc_time_varying}
 \title{Time-Varying Supervised PCA Model for Land Use and House Price Prediction}
 \usage{
-lu_ml_superpc_time_varying(DT.hp, DT.lu, repeats = 5, folds = 5, seed = 1234)
+lu_ml_superpc_time_varying(DT.hp, DT.lu, repeats = 5, folds = 5, seed = 123)
 }
 \arguments{
 \item{DT.hp}{A \code{data.table} containing house price data with columns \code{GEOID},
@@ -20,7 +20,7 @@ cross-validation. Defaults to 5.}
 Defaults to 5.}
 
 \item{seed}{An integer seed for reproducibility of random sampling and cross-validation
-folds. Defaults to 1234.}
+folds. Defaults to 123.}
 }
 \value{
 A \code{data.table} containing the original house price data

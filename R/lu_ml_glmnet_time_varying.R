@@ -21,7 +21,7 @@
 #'   If `"elasticnet"` is chosen, the function performs a grid search over `alpha`
 #'   in `seq(0.1, 0.9, 0.1)` and selects the best alpha based on cross-validated MSE.
 #' @param seed An integer seed for reproducibility of random sampling and cross-validation
-#'   folds. Defaults to 1234.
+#'   folds. Defaults to 123.
 #'
 #' @return A `data.table` containing the original house price data (`DT.hp`) merged
 #'   with out-of-sample predictions from the fitted penalized regression model. If
@@ -90,7 +90,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
                                       folds = 5,
                                       compute.lu.ml.parts = FALSE,
                                       penalty.type = c("ridge", "lasso", "elasticnet"),
-                                      seed = 12) {
+                                      seed = 123) {
 
   penalty.type <- match.arg(penalty.type)
 

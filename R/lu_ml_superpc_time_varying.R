@@ -14,7 +14,7 @@
 #' @param folds An integer specifying the number of folds for cross-validation.
 #'   Defaults to 5.
 #' @param seed An integer seed for reproducibility of random sampling and cross-validation
-#'   folds. Defaults to 1234.
+#'   folds. Defaults to 123.
 #'
 #' @return A `data.table` containing the original house price data
 #'   (`DT.hp`) merged with out-of-sample results from the supervised
@@ -80,7 +80,7 @@
 #'
 #' @export
 lu_ml_superpc_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
-                                       seed = 1234) {
+                                       seed = 123) {
   
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL
   repeat.id <- fold.id <- lu_ml_superpc1 <- NULL
