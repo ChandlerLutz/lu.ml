@@ -53,6 +53,6 @@ dt_cnty_lu_2010 <- dt_cnty_lu_2010 |>
 out <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
 
 # The column `lu_ml` is the instrument
-out[, cor(hp.target, lu_ml)]
+out[, cor(hp.target, lu_ml_xgboost)]
 print(out)
 ```
