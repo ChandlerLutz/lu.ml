@@ -10,7 +10,8 @@ lu_ml_xgboost_time_varying(
   repeats = 5,
   folds = 5,
   compute.lu.ml.parts = FALSE,
-  seed = 123
+  seed = 123,
+  importance = FALSE
 )
 }
 \arguments{
@@ -31,6 +32,13 @@ predictions for specific land use components. Defaults to FALSE.}
 
 \item{seed}{An integer seed for reproducibility of random sampling and cross-validation
 folds. Defaults to 123.}
+
+\item{importance}{A logical value indicating whether to compute and return
+feature importance and SHAP values. Defaults to FALSE. If TRUE, the function
+returns a list containing the out-of-sample predictions, feature importance,
+and SHAP values. Note that setting this to TRUE will significantly increase
+computation time and memory usage. Cannot be TRUE if \code{compute.lu.ml.parts}
+is also TRUE.}
 }
 \value{
 A data.table containing the original house price data (\code{DT.hp}) merged

@@ -17,6 +17,12 @@
 #'   predictions for specific land use components. Defaults to FALSE.
 #' @param seed An integer seed for reproducibility of random sampling and cross-validation
 #'   folds. Defaults to 123.
+#' @param importance A logical value indicating whether to compute and return
+#'   feature importance and SHAP values. Defaults to FALSE. If TRUE, the function
+#'   returns a list containing the out-of-sample predictions, feature importance,
+#'   and SHAP values. Note that setting this to TRUE will significantly increase
+#'   computation time and memory usage. Cannot be TRUE if `compute.lu.ml.parts`
+#'   is also TRUE.
 #'
 #' @return A data.table containing the original house price data (`DT.hp`) merged
 #'   with out-of-sample predictions from the XGBoost model. If
@@ -83,11 +89,18 @@
 #' 
 #' @export
 lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
-                                       compute.lu.ml.parts = FALSE, seed = 123) {
+                                       compute.lu.ml.parts = FALSE, seed = 123,
+                                       importance = FALSE) {
 
   ## For R cmd check
   . <- GEOID <- index <- hp.target <- test.geoids <- NULL
   repeat.id <- fold.id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
+  Gain <- Feature <- BIAS <- NULL
+
+  if (compute.lu.ml.parts == TRUE && importance == TRUE) {
+    stop("Error: In lu_ml_xgboost_time_varying(), you cannot set both `compute.lu.ml.parts` and `importance` to TRUE. Please set one of them to FALSE.")
+  }
+  
   
   DT.hp <- DT.hp %>%
     .[order(GEOID, index)]
@@ -233,7 +246,23 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     DT.oos.pred <- DT.test[, .(GEOID, index)] %>%
       .[, lu.best.xgboost := xgboost.pred]
 
-    return(list(DT.oos.pred = DT.oos.pred))
+    if (importance ==  FALSE) {
+      return(list(DT.oos.pred = DT.oos.pred))
+    } else {
+
+      DT.shap <- predict(xgboost.mod, newdata = dtest, predcontrib = TRUE) %>%
+        as.data.table() %>%
+        cbind(DT.test[, .(GEOID, index)], .)
+
+      DT.xgb.importance <- xgb.importance(
+        feature_names = colnames(dtrain),
+        model = xgboost.mod
+      )
+
+      return(list(DT.oos.pred = DT.oos.pred, 
+                  DT.xgb.importance = DT.xgb.importance, 
+                  DT.shap = DT.shap))
+    }
 
   }
 
@@ -260,11 +289,36 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     ##                      DT = list(DT),
     ##                      test.geoids = DT.est$test.geoids)
     
-    DT.oos.pred.all <- lapply(list.pred.all, \(x) x$DT.oos.pred) %>% rbindlist %>%
+    DT.oos.pred.all <- lapply(list.pred.all, \(x) x$DT.oos.pred) %>% rbindlist() %>%
       .[, .(lu_ml_xgboost = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
-    if (compute.lu.ml.parts == FALSE)
+    if (importance == TRUE) {
+
+      DT.xgb.shap.all <- lapply(list.pred.all, \(x) x$DT.shap) %>% 
+        rbindlist() %>%
+        .[, lapply(.SD, mean, na.rm = TRUE), by = .(GEOID, index)]
+
+      DT.xgb.importance.all <- lapply(list.pred.all, \(x) x$DT.xgb.importance) %>%
+        rbindlist() %>%
+        .[, .(Gain = mean(Gain, na.rm = TRUE)), by = .(Feature)] %>%
+        .[, Gain := Gain / sum(Gain)] %>%
+        .[order(-Gain)] %>%
+        .[, index := c(index_val)] %>%
+        setcolorder(c("index", "Feature", "Gain"))
+
+    }
+    
+
+    if (compute.lu.ml.parts == FALSE && importance == FALSE)  {
       return(DT.oos.pred.all)
+    } else if (compute.lu.ml.parts == FALSE && importance == TRUE) {
+
+      return(list(DT.oos.pred = DT.oos.pred.all, 
+                  DT.xgb.importance = DT.xgb.importance.all, 
+                  DT.xgb.shap = DT.xgb.shap.all))
+    }
+    
+      
 
     ##Parts
     parts.cols <- names(DT) %>% .[grepl("^slope|^water|^wetlands", x = .)]
@@ -364,7 +418,8 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     )
     future::plan(future::sequential())
     
-    DT.oos.pred.wetlands <- lapply(list.pred.wetlands, \(x) x$DT.oos.pred) %>% rbindlist %>%
+    DT.oos.pred.wetlands <- lapply(list.pred.wetlands, \(x) x$DT.oos.pred) %>%
+      rbindlist %>%
       .[, .(lu_ml_xgboost_wetlands = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
     DT.oos.pred <- merge(
@@ -379,11 +434,26 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
   }
 
-  DT.oos.pred.panel <- lapply(indices, f_get_xgboost_lu_predictions) %>%
-    rbindlist
+  list.out <- lapply(indices, f_get_xgboost_lu_predictions)
 
-  DT.oos.pred.panel <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
+  if (importance == FALSE) {
+    DT.oos.pred.panel <- rbindlist(list.out)
+    DT.oos.pred.panel <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
+    return(DT.oos.pred.panel)
+  } else {
+    
+    DT.oos.pred.panel <- rbindlist(lapply(list.out, \(x) x$DT.oos.pred)) %>%
+      merge(DT.hp, by = c("GEOID", "index")) %>%
+      setcolorder(c("GEOID", "index", "hp.target", "lu_ml_xgboost"))
+    DT.xgb.importance.panel <- rbindlist(lapply(list.out, \(x) x$DT.xgb.importance))
+    DT.xgb.shap.panel <- rbindlist(lapply(list.out, \(x) x$DT.xgb.shap))
 
-  return(DT.oos.pred.panel)
+    return(list(
+      DT.oos.pred.panel = DT.oos.pred.panel,
+      DT.xgb.importance.panel = DT.xgb.importance.panel,
+      DT.xgb.shap.panel = DT.xgb.shap.panel
+    ))
+
+  }
 
 }

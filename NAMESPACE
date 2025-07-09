@@ -3,6 +3,7 @@
 export("%>%")
 export(lu_ml_glmnet_time_varying)
 export(lu_ml_superpc_time_varying)
+export(lu_ml_xgboost_fixed_inference_set)
 export(lu_ml_xgboost_time_varying)
 import(data.table)
 import(future)
