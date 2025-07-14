@@ -34,9 +34,17 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
   res_with_importance <- lu_ml_xgboost_time_varying(
     DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010, importance = TRUE
   )
+  
+  expect_equal(
+    names(res_with_importance), 
+    c("DT.oos.pred.panel", "DT.xgb.importance.panel", "DT.xgb.shap.panel",
+      "DT.xgb.shap.interactions.panel")
+  )
   expect_true(is.data.table(res_with_importance$DT.oos.pred.panel))
   expect_true(is.data.table(res_with_importance$DT.xgb.importance.panel))
   expect_true(is.data.table(res_with_importance$DT.xgb.shap.panel))
+  expect_true(is.data.table(res_with_importance$DT.xgb.shap.interactions.panel))
+  
   expect_equal(
     names(res_with_importance$DT.oos.pred.panel),
     c("GEOID", "index", "hp.target", "lu_ml_xgboost")
@@ -46,12 +54,12 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
     c("index", "Feature", "Gain")
   )
   expect_equal(
-    names(res_with_importance$DT.xgb.shap.panel)[1:2],
-    c("GEOID", "index")
+    names(res_with_importance$DT.xgb.shap.panel), 
+    c("GEOID", "index", "feature", "shap_value")
   )
   expect_equal(
-    names(res_with_importance$DT.xgb.shap.panel) %>% .[length(.)],
-    "BIAS"
+    names(res_with_importance$DT.xgb.shap.interactions.panel), 
+    c("GEOID", "index", "feature1", "feature2", "shap_value")
   )
 
   expect_true(
@@ -66,9 +74,9 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
   )
 
 
-  ## Make sure that the SHAP values sum to the prediction
+  ## Make sure that the SHAP values for the main features sum to the prediction
   dt_shap_total_predictions <- res_with_importance$DT.xgb.shap.panel %>%
-    .[, .(GEOID, index, shap_total = rowSums(.SD)), .SDcols = -c("GEOID", "index")] %>%
+    .[, .(shap_total = sum(shap_value)), by = .(GEOID, index)] %>%
     merge(
       res_with_importance$DT.oos.pred.panel[, .(GEOID, index, lu_ml_xgboost)],
       by = c("GEOID", "index")
@@ -78,11 +86,21 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
     dt_shap_total_predictions[, cor(shap_total, lu_ml_xgboost)] > 0.999,
     dt_shap_total_predictions[, all(round(shap_total, 3) == round(lu_ml_xgboost, 3))]
   )
-  
-  
-  
-  
 
-  
+  ## Make sure that the SHAP interaction values sum to the prediction
+  dt_shap_interactions_total_predictions <-
+    res_with_importance$DT.xgb.shap.interactions.panel %>%
+    .[, .(shap_interaction_total = sum(shap_value)), keyby = .(GEOID, index)] %>%
+    merge(
+      res_with_importance$DT.oos.pred.panel[, .(GEOID, index, lu_ml_xgboost)],
+      by = c("GEOID", "index")
+    )
+
+  expect_true(
+    dt_shap_interactions_total_predictions %>%
+      .[, cor(shap_interaction_total, lu_ml_xgboost)] > 0.999,
+    dt_shap_interactions_total_predictions %>%
+      .[, all(round(shap_interaction_total, 3) == round(lu_ml_xgboost, 3))]
+  )
 
 })

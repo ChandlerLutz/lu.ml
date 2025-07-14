@@ -239,6 +239,11 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     DT.test <- DT[GEOID %chin% c(test.geoids)] %>%
       .[order(GEOID, index)]
 
+    stopifnot(
+      nrow(DT.test) == length(test.geoids),
+      nrow(DT.test) == length(unique(DT.test$GEOID))
+    )
+
     dtest <- f_get_xgboost_dmat(DT.test)
 
     xgboost.pred <- predict(xgboost.mod, dtest)
@@ -250,18 +255,38 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       return(list(DT.oos.pred = DT.oos.pred))
     } else {
 
-      DT.shap <- predict(xgboost.mod, newdata = dtest, predcontrib = TRUE) %>%
-        as.data.table() %>%
-        cbind(DT.test[, .(GEOID, index)], .)
-
       DT.xgb.importance <- xgb.importance(
         feature_names = colnames(dtrain),
         model = xgboost.mod
       )
 
+      DT.shap <- predict(xgboost.mod, newdata = dtest, predcontrib = TRUE) %>%
+        as.data.table() %>%
+        cbind(DT.test[, .(GEOID, index)], .) %>%
+        melt(id.vars = c("GEOID", "index"),
+             variable.name = "feature", value.name = "shap_value",
+             variable.factor = FALSE)
+
+      array.shap.interactions <- predict(xgboost.mod, newdata = dtest,
+                                         predinteraction = TRUE)
+      ## The first dimension of `array.shap.interactions` is the number of
+      ## observations/GEOIDs
+      stopifnot(length(DT.test$GEOID) == dim(array.shap.interactions)[1])
+
+      DT.test <- DT.test[, obs_idx := .I]
+
+      DT.shap.interactions <- as.data.table(array.shap.interactions) %>%
+        setnames(c("V1", "V2", "V3", "value"),
+                 c("obs_idx", "feature1", "feature2", "shap_value")) %>%
+        merge(DT.test[, .(obs_idx, GEOID, index)], by = "obs_idx") %>%
+        .[, obs_idx := NULL] %>%
+        setcolorder(c("GEOID", "index", "feature1", "feature2", "shap_value"))
+            
       return(list(DT.oos.pred = DT.oos.pred, 
                   DT.xgb.importance = DT.xgb.importance, 
-                  DT.shap = DT.shap))
+                  DT.shap = DT.shap,
+                  DT.shap.interactions = DT.shap.interactions
+                  ))
     }
 
   }
@@ -296,7 +321,14 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
       DT.xgb.shap.all <- lapply(list.pred.all, \(x) x$DT.shap) %>% 
         rbindlist() %>%
-        .[, lapply(.SD, mean, na.rm = TRUE), by = .(GEOID, index)]
+        .[, .(shap_value = mean(shap_value, na.rm = TRUE)),
+          keyby = .(GEOID, index, feature)]
+            
+      DT.xgb.shap.interactions.all <- lapply(
+        list.pred.all, \(x) x$DT.shap.interactions
+      ) %>%
+        rbindlist() %>%
+        .[, lapply(.SD, mean, na.rm = TRUE), by = .(GEOID, index, feature1, feature2)]
 
       DT.xgb.importance.all <- lapply(list.pred.all, \(x) x$DT.xgb.importance) %>%
         rbindlist() %>%
@@ -315,11 +347,10 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
       return(list(DT.oos.pred = DT.oos.pred.all, 
                   DT.xgb.importance = DT.xgb.importance.all, 
-                  DT.xgb.shap = DT.xgb.shap.all))
+                  DT.xgb.shap = DT.xgb.shap.all,
+                  DT.xgb.shap.interactions = DT.xgb.shap.interactions.all))
     }
     
-      
-
     ##Parts
     parts.cols <- names(DT) %>% .[grepl("^slope|^water|^wetlands", x = .)]
     ## list.pred.parts <- Map(
@@ -447,11 +478,16 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       setcolorder(c("GEOID", "index", "hp.target", "lu_ml_xgboost"))
     DT.xgb.importance.panel <- rbindlist(lapply(list.out, \(x) x$DT.xgb.importance))
     DT.xgb.shap.panel <- rbindlist(lapply(list.out, \(x) x$DT.xgb.shap))
+    DT.xgb.shap.interactions.panel <- lapply(
+      list.out, \(x) x$DT.xgb.shap.interactions
+    ) %>%
+      rbindlist()
 
     return(list(
       DT.oos.pred.panel = DT.oos.pred.panel,
       DT.xgb.importance.panel = DT.xgb.importance.panel,
-      DT.xgb.shap.panel = DT.xgb.shap.panel
+      DT.xgb.shap.panel = DT.xgb.shap.panel,
+      DT.xgb.shap.interactions.panel = DT.xgb.shap.interactions.panel
     ))
 
   }
