@@ -151,26 +151,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
   indices <- DT.hp[, unique(index)]
 
-  DT.est.base <- expand.grid(
-    repeat.id = 1:repeats, 
-    fold.id = 1:folds
-  ) %>% setDT() %>%
-    .[order(repeat.id)] %>%
-    .[, test.geoids := list()] %>%
-    .[, task.seed := seed + repeat.id + fold.id]
-
-  for (i in 1:repeats) {
-    geoids.rand <- withr::with_seed(seed = seed + i, {
-      sample(geoids, length(geoids))
-    })
-    test.ids.list <- chunk2(geoids.rand, folds)
-    for (j in 1:folds) {
-      test.ids <- test.ids.list[[j]]
-      DT.est.base <- DT.est.base %>%
-        .[repeat.id == i & fold.id == j, test.geoids := test.ids]
-    }
-  }
-
+  
   f_train_xgboost <- function(DT, test.geoids, train.seed) {
 
     ## For early stopping, see
@@ -296,11 +277,34 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     print(index_val)
 
     index.tmp <- index_val
-    DT.est <- copy(DT.est.base) %>%
-      .[, task.seed := task.seed + DT.hp[, which(unique(index) == c(index_val))]]
     
     DT <- DT.hp[index == index.tmp] %>%
       merge(DT.lu, by = "GEOID")
+
+    geoids.this.index <- DT[, unique(GEOID)]
+    seed.offset <- DT.hp[, which(unique(index) == c(index_val))]
+
+    DT.est <- expand.grid(
+      repeat.id = 1:repeats, 
+      fold.id = 1:folds
+    ) %>% setDT() %>%
+      .[order(repeat.id)] %>%
+      .[, test.geoids := list()] %>%
+      .[, task.seed := seed + repeat.id + fold.id + seed.offset]
+
+    for (i in 1:repeats) {
+      geoids.rand <- withr::with_seed(seed = seed + i + seed.offset, {
+        sample(geoids.this.index, length(geoids.this.index))
+      })
+      
+      test.ids.list <- chunk2(geoids.rand, folds) 
+      
+      for (j in 1:folds) {
+        test.ids <- test.ids.list[[j]]
+        DT.est <- DT.est %>%
+          .[repeat.id == i & fold.id == j, test.geoids := test.ids]
+      }
+    }
 
     future::plan(future::multisession(workers = future::availableCores()))
     list.pred.all <- future.apply::future_Map(f_train_xgboost,

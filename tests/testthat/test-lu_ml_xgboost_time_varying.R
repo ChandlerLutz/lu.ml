@@ -18,6 +18,13 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
   ## Round to just 1 decimal place as results depend somewhat on the xgboost version
   expect_equal(round(res[, cor(hp.target, lu_ml_xgboost)], 1), 0.7)
 
+  ## Test for reproducibility
+  res_run2 <- lu_ml_xgboost_time_varying(
+    DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010
+  )
+
+  expect_equal(res$hp.target, res_run2$hp.target)
+
   dt_cnty_lu_2010_without_total <- dt_cnty_lu_2010 %>%
     .[, .SD, .SDcols = !grepl("total_unavailable", names(.))]
 
