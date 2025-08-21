@@ -140,30 +140,15 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
   DT.lu <- DT.lu %>%
     .[order(GEOID)]
   
-  geoids <- DT.hp[, unique(GEOID)]
-
-  DT.panel.out <- DT.hp[, .(GEOID, index)]
-
   indices <- DT.hp[, unique(index)]
 
-  DT.est.base <- DT.hp %>%
-    .[, .(inference.geoids = list(unique(GEOID))), keyby = .(inference.grp)] %>%
-    .[, task.seed := seed + seq_len(.N)]
-
+  ## <<< REMOVED >>> The global DT.est.base creation was removed from here.
+  
   f_train_xgboost <- function(DT, inference.geoids, train.seed) {
-
-    ## For early stopping, see
-    ## https://codingwiththomas.blogspot.com/2016/03/xgboost-validation-and-early-stopping.html
-    ## https://mljar.com/blog/xgboost-early-stopping/#:~:text=Early%20stopping%20is%20a%20technique,loss%20monitoring%20and%20early%20stopping.
-    ## https://machinelearningmastery.com/avoid-overfitting-by-early-stopping-with-xgboost-in-python/#:~:text=XGBoost%20supports%20early%20stopping%20after,which%20no%20improvement%20is%20observed.
-
     data.table::setDTthreads(1)
     xgboost_ntrheads <- 1
 
     geoids <- DT[, unique(GEOID)]
-
-    ## Follow the method here to try and improve performance. 
-    ## https://stackoverflow.com/a/35101405/1317443
 
     train.geoids <- geoids %>% .[!(. %chin% inference.geoids)]
     tune.nrounds.geoids <- withr::with_seed(seed = train.seed, {
@@ -178,89 +163,67 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
     }
 
     ## -- Tune nrounds -- ##
-    
     DT.tune <- DT[GEOID %chin% c(tune.nrounds.geoids)]
     DT.validation <- DT[GEOID %chin% c(validation.nrounds.geoids)]
-
     dtune <- f_get_xgboost_dmat(DT.tune)
     dvalidation <- f_get_xgboost_dmat(DT.validation)
-
     watchlist <- list(train=dtune, eval=dvalidation)
-
     withr::with_seed(seed = train.seed, {
       clf <- xgb.train(
-        data = dtune, 
-        nrounds = 500, 
-        watchlist = watchlist,
-        maximize = FALSE,
-        early_stopping_rounds = 25,
-        objective = "reg:squarederror", ## the objective function
-        verbose = FALSE,
-        nthread = xgboost_ntrheads
+        data = dtune, nrounds = 500, watchlist = watchlist,
+        maximize = FALSE, early_stopping_rounds = 25,
+        objective = "reg:squarederror", verbose = FALSE, nthread = xgboost_ntrheads
       )
     })
 
     ## -- Train -- ##
-
     DT.train <- DT[GEOID %chin% c(train.geoids)]
-    
     dtrain <- f_get_xgboost_dmat(DT.train)
-
     withr::with_seed(seed = train.seed, {
       xgboost.mod <- xgboost(
-        data = dtrain, ## the data   
-        nrounds = clf$best_iteration, ## max number of boosting iterations
-        objective = "reg:squarederror", ## the objective function
-        verbose = FALSE,
-        nthread = xgboost_ntrheads
+        data = dtrain, nrounds = clf$best_iteration,
+        objective = "reg:squarederror", verbose = FALSE, nthread = xgboost_ntrheads
       )
     })
 
     ## -- Predict -- ##
-
     DT.inference <- DT[GEOID %chin% c(inference.geoids)] %>%
       .[order(GEOID, index)]
-
     dinference <- f_get_xgboost_dmat(DT.inference)
-
     xgboost.pred <- predict(xgboost.mod, dinference)
-
-
     DT.oos.pred <- DT.inference[, .(GEOID, index)] %>%
       .[, lu.best.xgboost := xgboost.pred]
 
     return(list(DT.oos.pred = DT.oos.pred))
-
   }
 
   f_get_xgboost_lu_predictions <- function(index_val) {
-
     print(index_val)
-
     index.tmp <- index_val
-    DT.est <- copy(DT.est.base) %>%
-      .[, task.seed := task.seed + DT.hp[, which(unique(index) == c(index_val))]]
-
+    
     DT <- DT.hp[index == index.tmp] %>%
       merge(DT.lu, by = "GEOID")
+
+    ## <<< MODIFICATION START: Inference sets are now created here for each time index >>>
+    seed.offset <- DT.hp[, which(unique(index) == c(index_val))]
+    
+    # Create inference sets based on the groups present in THIS time period's data
+    DT.est <- DT[, .(inference.geoids = list(unique(GEOID))), keyby = .(inference.grp)] %>%
+      .[, task.seed := seed + seq_len(.N) + seed.offset]
+    ## <<< MODIFICATION END >>>
 
     future::plan(future::multisession(workers = future::availableCores()))
     list.pred.all <- future.apply::future_Map(f_train_xgboost,
                                               DT = list(DT),
                                               inference.geoids = DT.est$inference.geoids,
-                                              train.seed = seed, 
+                                              train.seed = DT.est$task.seed,
                                               future.seed = TRUE)
     future::plan(future::sequential())
-
-    ## list.pred.all <- Map(f_train_xgboost,
-    ##                      DT = list(DT),
-    ##                      inference.geoids = DT.est$inference.geoids)
     
-    DT.oos.pred.all <- lapply(list.pred.all, \(x) x$DT.oos.pred) %>% rbindlist %>%
+    DT.oos.pred.all <- lapply(list.pred.all, `[[`, "DT.oos.pred") %>% rbindlist %>%
       .[, .(lu_ml_xgboost = mean(lu.best.xgboost)), by = .(GEOID, index)]
 
     return(DT.oos.pred.all)
-
   }
 
   DT.oos.pred.panel <- lapply(indices, f_get_xgboost_lu_predictions) %>%
@@ -269,5 +232,4 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
   DT.oos.pred.panel <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
 
   return(DT.oos.pred.panel)
-
 }

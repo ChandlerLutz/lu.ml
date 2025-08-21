@@ -108,23 +108,11 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
 
   DT.hp <- DT.hp[GEOID %chin% DT.lu$GEOID]
   DT.lu <- DT.lu[GEOID %chin% DT.hp$GEOID]
-
-  geoids <- DT.hp[, unique(GEOID)]
+  
   indices <- DT.hp[, unique(index)]
 
-  DT.est.base <- expand.grid(repeat.id = 1:repeats, fold.id = 1:folds) %>%
-    setDT() %>%
-    .[order(repeat.id)] %>%
-    .[, test.geoids := list()] %>%
-    .[, task.seed := seed + repeat.id + fold.id]
-
-  for (i in 1:repeats) {
-    geoids.rand <- withr::with_seed(seed + i, sample(geoids))
-    test.ids.list <- chunk2(geoids.rand, folds)
-    for (j in 1:folds)
-      DT.est.base[repeat.id == i & fold.id == j,
-                  test.geoids := list(test.ids.list[[j]])]
-  }
+  ## <<< REMOVED >>> The global DT.est.base and fold creation block was removed from here.
+  ## It is now located inside the f_get_glmnet_lu_predictions function.
 
   f_train_glmnet <- function(DT, test.geoids, train.seed) {
 
@@ -161,9 +149,32 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
 
   f_get_glmnet_lu_predictions <- function(index_val) {
     cat("Processing index:", as.character(index_val), "\n")
-    DT.est <- copy(DT.est.base) %>%
-      .[, task.seed := task.seed + DT.hp[, which(unique(index) == c(index_val))]]
+    
     DT <- DT.hp[index == c(index_val)] %>% merge(DT.lu, by = "GEOID")
+
+    ## <<< MODIFICATION START: Robust fold creation is now here >>>
+    geoids.this.index <- DT[, unique(GEOID)]
+    seed.offset <- DT.hp[, which(unique(index) == c(index_val))]
+
+    DT.est <- expand.grid(repeat.id = 1:repeats, fold.id = 1:folds) %>%
+      setDT() %>%
+      .[order(repeat.id)] %>%
+      .[, test.geoids := list()] %>%
+      .[, task.seed := seed + repeat.id + fold.id + seed.offset]
+
+    for (i in 1:repeats) {
+      geoids.rand <- withr::with_seed(seed = seed + i + seed.offset, {
+        sample(geoids.this.index, length(geoids.this.index))
+      })
+      
+      dt_folds <- data.table(GEOID = geoids.rand)
+      dt_folds[, fold_id := rep(1:folds, length.out = .N)] 
+      
+      test.ids.list <- dt_folds[, .(test_geoids = list(GEOID)), by = fold_id]$test_geoids
+      
+      DT.est[repeat.id == i, test.geoids := test.ids.list]
+    }
+    ## <<< MODIFICATION END >>>
 
     future::plan(future::multisession(workers = future::availableCores()))
     list.pred.all <- future.apply::future_Map(f_train_glmnet,
@@ -172,7 +183,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
                                               train.seed = DT.est$task.seed)
     future::plan(future::sequential())
 
-    DT.oos.pred.all <- rbindlist(lapply(list.pred.all, \(x) x$DT.oos.pred)) %>%
+    DT.oos.pred.all <- rbindlist(lapply(list.pred.all, `[[`, "DT.oos.pred")) %>%
       .[, .(lu_ml = mean(lu.best.glmnet)), by = .(GEOID, index)]
 
     if (!compute.lu.ml.parts) return(DT.oos.pred.all)
@@ -185,9 +196,9 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
         test.geoids = DT.est$test.geoids,
         future.seed = seed
       )
-      rbindlist(lapply(list.pred, \(x) x$DT.oos.pred)) %>%
-        .[, (name) := mean(lu.best.glmnet), by = .(GEOID, index)] %>%
-        .[, .SD, .SDcols = c("GEOID", "index", name)]
+      rbindlist(lapply(list.pred, `[[`, "DT.oos.pred")) %>%
+        .[, .(mean_pred = mean(lu.best.glmnet)), by = .(GEOID, index)] %>%
+        setnames("mean_pred", name)
     }
 
     parts    <- get_cols_and_predict("^slope|^water|^wetlands", "lu_ml_parts")
@@ -196,7 +207,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
     water    <- get_cols_and_predict("^water", "lu_ml_water")
     wetlands <- get_cols_and_predict("^wetlands", "lu_ml_wetlands")
 
-    Reduce(function(...) merge(..., by = c("GEOID", "index")),
+    Reduce(function(...) merge(..., by = c("GEO.ID", "index")),
            list(DT.oos.pred.all, parts, total, slope, water, wetlands))
   }
 
