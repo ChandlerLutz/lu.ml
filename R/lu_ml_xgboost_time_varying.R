@@ -305,13 +305,6 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
       DT.est <- DT.est %>%
         .[repeat.id == i, test.geoids := test.ids.list]
       
-      ## test.ids.list <- chunk2(geoids.rand, folds) 
-      
-      ## for (j in 1:folds) {
-      ##   test.ids <- test.ids.list[[j]]
-      ##   DT.est <- DT.est %>%
-      ##     .[repeat.id == i & fold.id == j, test.geoids := test.ids]
-      ## }
     }
 
     future::plan(future::multisession(workers = future::availableCores()))
