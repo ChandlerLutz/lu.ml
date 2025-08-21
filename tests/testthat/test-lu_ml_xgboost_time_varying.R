@@ -111,3 +111,56 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
   )
 
 })
+
+test_that("lu_ml_xgboost_time_varying() fails with duplicate LU GEOIDs", {
+
+  data(dt_mian_sufi_2014)
+  data(dt_cnty_lu_2010)
+
+  dt_mian_sufi_2014 <- dt_mian_sufi_2014 %>%
+    .[, .(GEOID = fips, index = as.Date("2002-01-01"), hp.target = house.net.worth)] %>%
+    .[!is.na(hp.target)]
+
+  dt_cnty_lu_2010 <- dt_cnty_lu_2010 %>%
+    .[, .(GEOID, unavailable = .SD),
+      .SDcols = grep("unavailable", names(dt_cnty_lu_2010), value = TRUE)]
+
+  dt_cnty_lu_2010 <- rbind(dt_cnty_lu_2010, dt_cnty_lu_2010)
+
+  expect_error(
+    lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
+  )
+
+})
+
+
+
+test_that("lu_ml_xgboost_time_varying() work for Chaney et al. Data", {
+  
+  data(dt_chaneyetal_2012)
+  dt_chaneyetal_2012 <- dt_chaneyetal_2012 %>%
+    .[, .(GEOID = id, index = as.Date(paste0(year_char, "-01-01")),
+          hp.target = index_normalized)] %>%
+    .[!is.na(hp.target)]
+  
+  data(dt_lu_cbsa09_for_chaneyetal)
+
+  dt_lu_cbsa09_for_chaneyetal <- dt_lu_cbsa09_for_chaneyetal %>%
+    .[, msacode := NULL] %>%
+    setnames("id", "GEOID")
+
+  res1 <- lu_ml_xgboost_time_varying(
+    DT.hp = dt_chaneyetal_2012[index == "1993-01-01"],
+    DT.lu = dt_lu_cbsa09_for_chaneyetal
+  )
+
+  expect_true(is.data.table(res1))
+
+  res2 <- lu_ml_xgboost_time_varying(
+    DT.hp = dt_chaneyetal_2012[index %in% c("1993-01-01", "1994-01-01")],
+    DT.lu = dt_lu_cbsa09_for_chaneyetal
+  )
+
+  expect_true(is.data.table(res2))
+  
+})

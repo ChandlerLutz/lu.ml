@@ -108,6 +108,10 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
   DT.lu <- DT.lu %>%
     .[order(GEOID)]
 
+  if (DT.lu[, .N, by = GEOID][, any(N > 1)]) {
+    stop("Error: In lu_ml_xgboost_time_varying(), DT.lu has duplicate GEOIDs.")
+  }
+
   if (DT.hp[, sum(is.na(hp.target))] > 0) {
     stop("Error: In lu_ml_xgboost_time_varying(), there are missing values in hp.target.")
   }

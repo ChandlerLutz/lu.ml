@@ -103,6 +103,10 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
   DT.lu <- DT.lu %>%
     .[order(GEOID)]
 
+  if (DT.lu[, .N, by = GEOID][, any(N > 1)]) {
+    stop("Error: In lu_ml_xgboost_time_varying(), DT.lu has duplicate GEOIDs.")
+  }
+
   if (DT.hp[, sum(is.na(hp.target))] > 0) {
     stop("Error: In lu_ml_xgboost_time_varying(), there are missing values in hp.target.")
   }
