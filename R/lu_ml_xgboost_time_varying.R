@@ -93,9 +93,9 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
                                        importance = FALSE) {
 
   ## For R cmd check
-  . <- GEOID <- index <- hp.target <- test.geoids <- NULL
-  repeat.id <- fold.id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
-  Gain <- Feature <- BIAS <- NULL
+  . <- GEOID <- index <- hp.target <- test.geoids <- obs_idx <- NULL
+  repeat.id <- fold.id <- fold_id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
+  Gain <- Feature <- BIAS <- shap_value <- feature <- feature1 <- feature2 <- NULL
 
   if (compute.lu.ml.parts == TRUE && importance == TRUE) {
     stop("Error: In lu_ml_xgboost_time_varying(), you cannot set both `compute.lu.ml.parts` and `importance` to TRUE. Please set one of them to FALSE.")

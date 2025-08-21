@@ -94,7 +94,7 @@ lu_ml_glmnet_time_varying <- function(DT.hp, DT.lu,
 
   penalty.type <- match.arg(penalty.type)
 
-  . <- GEOID <- index <- hp.target <- test.geoids <- NULL
+  . <- GEOID <- index <- hp.target <- test.geoids <- fold_id <- NULL
   repeat.id <- fold.id <- task.seed <- lu.best.glmnet <- N <- .N <- NULL
 
   DT.hp <- DT.hp[order(GEOID, index)]

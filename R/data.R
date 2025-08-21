@@ -88,25 +88,25 @@
 #' @format A `data.table` with observations for multiple MSAs over several years,
 #' containing 19 variables:
 #' \describe{
-#'   \item{msacode}{Integer. The Metropolitan Statistical Area (MSA) code.}
-#'   \item{year}{Integer. The year of the observation (1993-2006).}
-#'   \item{msa}{Character. The name of the MSA.}
-#'   \item{msacode_orig}{Integer. The original MSA code, likely for merging or reference.}
-#'   \item{index_msa}{Numeric. The MSA-level house price index for the given year.}
-#'   \item{index06}{Numeric. The MSA-level house price index in the base year 2006.}
-#'   \item{index_normalized}{Numeric. The house price index normalized by the 2006 value (`index_msa` / `index06`).}
-#'   \item{mortgage}{Numeric. The average annual mortgage rate.}
-#'   \item{inflation}{Numeric. The annual inflation rate.}
-#'   \item{real_mtg_rate}{Numeric. The real mortgage rate, calculated as `mortgage - inflation`.}
-#'   \item{msaname_saiz}{Character. The MSA name from the Saiz (2010) housing supply elasticity data.}
-#'   \item{elasticity}{Numeric. A measure of housing supply elasticity.}
-#'   \item{elasticity2}{Numeric. An alternative measure of housing supply elasticity.}
-#'   \item{elasticity3}{Numeric. An alternative measure of housing supply elasticity.}
-#'   \item{elasticity4}{Numeric. An alternative measure of housing supply elasticity.}
-#'   \item{saiz_rate}{Numeric. A variable related to the Saiz (2010) data.}
-#'   \item{year_char}{Character. The year of observation as a character string.}
-#'   \item{msa_char}{Character. The MSA code as a character string.}
-#'   \item{id}{Character. A unique identifier for each MSA.}
+#'   \item{\code{msacode}}{Integer. The Metropolitan Statistical Area (MSA) code.}
+#'   \item{\code{year}}{Integer. The year of the observation (1993-2006).}
+#'   \item{\code{msa}}{Character. The name of the MSA.}
+#'   \item{\code{msacode_orig}}{Integer. The original MSA code, likely for merging or reference.}
+#'   \item{\code{index_msa}}{Numeric. The MSA-level house price index for the given year.}
+#'   \item{\code{index06}}{Numeric. The MSA-level house price index in the base year 2006.}
+#'   \item{\code{index_normalized}}{Numeric. The house price index normalized by the 2006 value (`index_msa` / `index06`).}
+#'   \item{\code{mortgage}}{Numeric. The average annual mortgage rate.}
+#'   \item{\code{inflation}}{Numeric. The annual inflation rate.}
+#'   \item{\code{real_mtg_rate}}{Numeric. The real mortgage rate, calculated as `mortgage - inflation`.}
+#'   \item{\code{msaname_saiz}}{Character. The MSA name from the Saiz (2010) housing supply elasticity data.}
+#'   \item{\code{elasticity}}{Numeric. A measure of housing supply elasticity.}
+#'   \item{\code{elasticity2}}{Numeric. An alternative measure of housing supply elasticity.}
+#'   \item{\code{elasticity3}}{Numeric. An alternative measure of housing supply elasticity.}
+#'   \item{\code{elasticity4}}{Numeric. An alternative measure of housing supply elasticity.}
+#'   \item{\code{saiz_rate}}{Numeric. A variable related to the Saiz (2010) data.}
+#'   \item{\code{year_char}}{Character. The year of observation as a character string.}
+#'   \item{\code{msa_char}}{Character. The MSA code as a character string.}
+#'   \item{\code{id}}{Character. A unique identifier for each MSA.}
 #' }
 #'
 #' @source
@@ -117,7 +117,6 @@
 #' @name dt_chaneyetal_2012
 #' @docType data
 #' @usage data(dt_chaneyetal_2012)
-#'
 "dt_chaneyetal_2012"
 
 #' Highly Disaggregated Land Unavailability Data for U.S. CBSAs
@@ -135,20 +134,17 @@
 #'
 #' @format A `data.table` with observations for U.S. CBSAs, containing 56 variables:
 #' \describe{
-#'   \item{msacode}{Character. The Metropolitan Statistical Area (MSA/CBSA) code. Acts as the key.}
-#'   \item{id}{Character. A unique identifier for each MSA, consistent with the Chaney et al. (2012) data.}
-#'
-#'   \item{slope_unavailable_cbsa_..._pct_buffer}{Numeric. Percentage of land in the **CBSA** unavailable due to steep slopes, calculated with different percentage buffers (e.g., `000` for 0%, `005` for 0.5%, `010` for 1.0%, `015` for 1.5%, `020` for 2.0%).}
-#'   \item{water_unavailable_cbsa_..._pct_buffer}{Numeric. Percentage of land in the **CBSA** unavailable due to water bodies, with various percentage buffers.}
-#'   \item{wetlands_unavailable_cbsa_..._pct_buffer}{Numeric. Percentage of land in the **CBSA** unavailable due to wetlands, with various percentage buffers.}
-#'
-#'   \item{slope_unavailable_prin_city_..._pct_buffer}{Numeric. Percentage of land in the **principal city** unavailable due to steep slopes, with different percentage buffers (from `000` to `150`, representing 0% to 15.0%).}
-#'   \item{water_unavailable_prin_city_..._pct_buffer}{Numeric. Percentage of land in the **principal city** unavailable due to water bodies, with various percentage buffers.}
-#'   \item{wetlands_unavailable_prin_city_..._pct_buffer}{Numeric. Percentage of land in the **principal city** unavailable due to wetlands, with various percentage buffers.}
-#'
-#'   \item{slope_unavailable_prin_city_circle_radius_...km}{Numeric. Percentage of land unavailable due to steep slopes within a circular area around the **principal city's** center, with different radii (from `20km` to `100km`).}
-#'   \item{water_unavailable_prin_city_circle_radius_...km}{Numeric. Percentage of land unavailable due to water bodies within a circular area around the **principal city's** center, with various radii.}
-#'   \item{wetlands_unavailable_prin_city_circle_radius_...km}{Numeric. Percentage of land unavailable due to wetlands within a circular area around the **principal city's** center, with various radii.}
+#'   \item{\code{msacode}}{Character. The Metropolitan Statistical Area (MSA/CBSA) code. Acts as the key.}
+#'   \item{\code{id}}{Character. A unique identifier for each MSA, consistent with the Chaney et al. (2012) data.}
+#'   \item{\code{slope_unavailable_cbsa_..._pct_buffer}}{Numeric. Percentage of land in the **CBSA** unavailable due to steep slopes, calculated with different percentage buffers (e.g., `000` for 0%, `005` for 0.5%, `010` for 1.0%, `015` for 1.5%, `020` for 2.0%).}
+#'   \item{\code{water_unavailable_cbsa_..._pct_buffer}}{Numeric. Percentage of land in the **CBSA** unavailable due to water bodies, with various percentage buffers.}
+#'   \item{\code{wetlands_unavailable_cbsa_..._pct_buffer}}{Numeric. Percentage of land in the **CBSA** unavailable due to wetlands, with various percentage buffers.}
+#'   \item{\code{slope_unavailable_prin_city_..._pct_buffer}}{Numeric. Percentage of land in the **principal city** unavailable due to steep slopes, with different percentage buffers (from `000` to `150`, representing 0% to 15.0%).}
+#'   \item{\code{water_unavailable_prin_city_..._pct_buffer}}{Numeric. Percentage of land in the **principal city** unavailable due to water bodies, with various percentage buffers.}
+#'   \item{\code{wetlands_unavailable_prin_city_..._pct_buffer}}{Numeric. Percentage of land in the **principal city** unavailable due to wetlands, with various percentage buffers.}
+#'   \item{\code{slope_unavailable_prin_city_circle_radius_...km}}{Numeric. Percentage of land unavailable due to steep slopes within a circular area around the **principal city's** center, with different radii (from `20km` to `100km`).}
+#'   \item{\code{water_unavailable_prin_city_circle_radius_...km}}{Numeric. Percentage of land unavailable due to water bodies within a circular area around the **principal city's** center, with various radii.}
+#'   \item{\code{wetlands_unavailable_prin_city_circle_radius_...km}}{Numeric. Percentage of land unavailable to wetlands within a circular area around the **principal city's** center, with various radii.}
 #' }
 #'
 #' @source

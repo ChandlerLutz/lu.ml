@@ -7,20 +7,17 @@
 \format{
 A \code{data.table} with observations for U.S. CBSAs, containing 56 variables:
 \describe{
-\item{msacode}{Character. The Metropolitan Statistical Area (MSA/CBSA) code. Acts as the key.}
-\item{id}{Character. A unique identifier for each MSA, consistent with the Chaney et al. (2012) data.}
-
-\item{slope_unavailable_cbsa_...\emph{pct_buffer}{Numeric. Percentage of land in the \strong{CBSA} unavailable due to steep slopes, calculated with different percentage buffers (e.g., \code{000} for 0\%, \code{005} for 0.5\%, \code{010} for 1.0\%, \code{015} for 1.5\%, \code{020} for 2.0\%).}
-\item{water_unavailable_cbsa}...\emph{pct_buffer}{Numeric. Percentage of land in the \strong{CBSA} unavailable due to water bodies, with various percentage buffers.}
-\item{wetlands_unavailable_cbsa}..._pct_buffer}{Numeric. Percentage of land in the \strong{CBSA} unavailable due to wetlands, with various percentage buffers.}
-
-\item{slope_unavailable_prin_city_...\emph{pct_buffer}{Numeric. Percentage of land in the \strong{principal city} unavailable due to steep slopes, with different percentage buffers (from \code{000} to \code{150}, representing 0\% to 15.0\%).}
-\item{water_unavailable_prin_city}...\emph{pct_buffer}{Numeric. Percentage of land in the \strong{principal city} unavailable due to water bodies, with various percentage buffers.}
-\item{wetlands_unavailable_prin_city}..._pct_buffer}{Numeric. Percentage of land in the \strong{principal city} unavailable due to wetlands, with various percentage buffers.}
-
-\item{slope_unavailable_prin_city_circle_radius_...km}{Numeric. Percentage of land unavailable due to steep slopes within a circular area around the \strong{principal city's} center, with different radii (from \verb{20km} to \verb{100km}).}
-\item{water_unavailable_prin_city_circle_radius_...km}{Numeric. Percentage of land unavailable due to water bodies within a circular area around the \strong{principal city's} center, with various radii.}
-\item{wetlands_unavailable_prin_city_circle_radius_...km}{Numeric. Percentage of land unavailable due to wetlands within a circular area around the \strong{principal city's} center, with various radii.}
+\item{\code{msacode}}{Character. The Metropolitan Statistical Area (MSA/CBSA) code. Acts as the key.}
+\item{\code{id}}{Character. A unique identifier for each MSA, consistent with the Chaney et al. (2012) data.}
+\item{\code{slope_unavailable_cbsa_..._pct_buffer}}{Numeric. Percentage of land in the \strong{CBSA} unavailable due to steep slopes, calculated with different percentage buffers (e.g., \code{000} for 0\%, \code{005} for 0.5\%, \code{010} for 1.0\%, \code{015} for 1.5\%, \code{020} for 2.0\%).}
+\item{\code{water_unavailable_cbsa_..._pct_buffer}}{Numeric. Percentage of land in the \strong{CBSA} unavailable due to water bodies, with various percentage buffers.}
+\item{\code{wetlands_unavailable_cbsa_..._pct_buffer}}{Numeric. Percentage of land in the \strong{CBSA} unavailable due to wetlands, with various percentage buffers.}
+\item{\code{slope_unavailable_prin_city_..._pct_buffer}}{Numeric. Percentage of land in the \strong{principal city} unavailable due to steep slopes, with different percentage buffers (from \code{000} to \code{150}, representing 0\% to 15.0\%).}
+\item{\code{water_unavailable_prin_city_..._pct_buffer}}{Numeric. Percentage of land in the \strong{principal city} unavailable due to water bodies, with various percentage buffers.}
+\item{\code{wetlands_unavailable_prin_city_..._pct_buffer}}{Numeric. Percentage of land in the \strong{principal city} unavailable due to wetlands, with various percentage buffers.}
+\item{\code{slope_unavailable_prin_city_circle_radius_...km}}{Numeric. Percentage of land unavailable due to steep slopes within a circular area around the \strong{principal city's} center, with different radii (from \verb{20km} to \verb{100km}).}
+\item{\code{water_unavailable_prin_city_circle_radius_...km}}{Numeric. Percentage of land unavailable due to water bodies within a circular area around the \strong{principal city's} center, with various radii.}
+\item{\code{wetlands_unavailable_prin_city_circle_radius_...km}}{Numeric. Percentage of land unavailable to wetlands within a circular area around the \strong{principal city's} center, with various radii.}
 }
 }
 \source{

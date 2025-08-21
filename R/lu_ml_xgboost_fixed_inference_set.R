@@ -95,7 +95,7 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
 
   ## For R cmd check
   . <- GEOID <- index <- hp.target <- test.geoids <- inference.grp <- NULL
-  repeat.id <- fold.id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
+  repeat.id <- fold.id <- fold_id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
   
   DT.hp <- DT.hp %>%
     .[order(GEOID, index)]

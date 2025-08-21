@@ -82,8 +82,8 @@
 lu_ml_superpc_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
                                        seed = 123) {
   
-  . <- GEOID <- index <- hp.target <- test.geoids <- NULL
-  repeat.id <- fold.id <- lu_ml_superpc1 <- NULL
+  . <- GEOID <- index <- hp.target <- test.geoids <- obs_idx <- N <- NULL
+  repeat.id <- fold.id <- fold_id <- lu_ml_superpc1 <- NULL
 
   DT.hp <- DT.hp[order(GEOID, index)]
   DT.lu <- DT.lu[order(GEOID)]

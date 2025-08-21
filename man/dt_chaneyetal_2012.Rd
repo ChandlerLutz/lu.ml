@@ -8,25 +8,25 @@
 A \code{data.table} with observations for multiple MSAs over several years,
 containing 19 variables:
 \describe{
-\item{msacode}{Integer. The Metropolitan Statistical Area (MSA) code.}
-\item{year}{Integer. The year of the observation (1993-2006).}
-\item{msa}{Character. The name of the MSA.}
-\item{msacode_orig}{Integer. The original MSA code, likely for merging or reference.}
-\item{index_msa}{Numeric. The MSA-level house price index for the given year.}
-\item{index06}{Numeric. The MSA-level house price index in the base year 2006.}
-\item{index_normalized}{Numeric. The house price index normalized by the 2006 value (\code{index_msa} / \code{index06}).}
-\item{mortgage}{Numeric. The average annual mortgage rate.}
-\item{inflation}{Numeric. The annual inflation rate.}
-\item{real_mtg_rate}{Numeric. The real mortgage rate, calculated as \code{mortgage - inflation}.}
-\item{msaname_saiz}{Character. The MSA name from the Saiz (2010) housing supply elasticity data.}
-\item{elasticity}{Numeric. A measure of housing supply elasticity.}
-\item{elasticity2}{Numeric. An alternative measure of housing supply elasticity.}
-\item{elasticity3}{Numeric. An alternative measure of housing supply elasticity.}
-\item{elasticity4}{Numeric. An alternative measure of housing supply elasticity.}
-\item{saiz_rate}{Numeric. A variable related to the Saiz (2010) data.}
-\item{year_char}{Character. The year of observation as a character string.}
-\item{msa_char}{Character. The MSA code as a character string.}
-\item{id}{Character. A unique identifier for each MSA.}
+\item{\code{msacode}}{Integer. The Metropolitan Statistical Area (MSA) code.}
+\item{\code{year}}{Integer. The year of the observation (1993-2006).}
+\item{\code{msa}}{Character. The name of the MSA.}
+\item{\code{msacode_orig}}{Integer. The original MSA code, likely for merging or reference.}
+\item{\code{index_msa}}{Numeric. The MSA-level house price index for the given year.}
+\item{\code{index06}}{Numeric. The MSA-level house price index in the base year 2006.}
+\item{\code{index_normalized}}{Numeric. The house price index normalized by the 2006 value (\code{index_msa} / \code{index06}).}
+\item{\code{mortgage}}{Numeric. The average annual mortgage rate.}
+\item{\code{inflation}}{Numeric. The annual inflation rate.}
+\item{\code{real_mtg_rate}}{Numeric. The real mortgage rate, calculated as \code{mortgage - inflation}.}
+\item{\code{msaname_saiz}}{Character. The MSA name from the Saiz (2010) housing supply elasticity data.}
+\item{\code{elasticity}}{Numeric. A measure of housing supply elasticity.}
+\item{\code{elasticity2}}{Numeric. An alternative measure of housing supply elasticity.}
+\item{\code{elasticity3}}{Numeric. An alternative measure of housing supply elasticity.}
+\item{\code{elasticity4}}{Numeric. An alternative measure of housing supply elasticity.}
+\item{\code{saiz_rate}}{Numeric. A variable related to the Saiz (2010) data.}
+\item{\code{year_char}}{Character. The year of observation as a character string.}
+\item{\code{msa_char}}{Character. The MSA code as a character string.}
+\item{\code{id}}{Character. A unique identifier for each MSA.}
 }
 }
 \source{
