@@ -2,7 +2,10 @@ Package: lu.ml
 Title: Create the Land Unavailability (LU) Machine Learning (ML) instrument for house prices
 Version: 0.0.11
 Authors@R: 
-    person("Chandler", "Lutz", "chandler.lut@charlotte.edu", role = c("aut", "cre"))
+    person(given = "Chandler", 
+           family = "Lutz", 
+           email = "chandler.lut@charlotte.edu", 
+           role = c("aut", "cre"))
 Description: Create the Land Unavailability (LU) Machine Learning (ML) supply constraints.
 License: MIT + file LICENSE
 Encoding: UTF-8
