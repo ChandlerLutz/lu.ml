@@ -102,11 +102,11 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
   }
   
   
-  DT.hp <- DT.hp %>%
-    .[order(GEOID, index)]
+  DT.hp <- copy(DT.hp) %>%
+    setorder(GEOID, index)
 
-  DT.lu <- DT.lu %>%
-    .[order(GEOID)]
+  DT.lu <- copy(DT.lu) %>%
+    setorder(GEOID)
 
   if (DT.lu[, .N, by = GEOID][, any(N > 1)]) {
     stop("Error: In lu_ml_xgboost_time_varying(), DT.lu has duplicate GEOIDs.")
@@ -155,16 +155,22 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
   indices <- DT.hp[, unique(index)]
 
-  
+
+  ## For early stopping, see
+  ## https://codingwiththomas.blogspot.com/2016/03/xgboost-validation-and-early-stopping.html
+  ## https://mljar.com/blog/xgboost-early-stopping/#:~:text=Early%20stopping%20is%20a%20technique,loss%20monitoring%20and%20early%20stopping.
+  ## https://machinelearningmastery.com/avoid-overfitting-by-early-stopping-with-xgboost-in-python/#:~:text=XGBoost%20supports%20early%20stopping%20after,which%20no%20improvement%20is%20observed.
+
   f_train_xgboost <- function(DT, test.geoids, train.seed) {
 
-    ## For early stopping, see
-    ## https://codingwiththomas.blogspot.com/2016/03/xgboost-validation-and-early-stopping.html
-    ## https://mljar.com/blog/xgboost-early-stopping/#:~:text=Early%20stopping%20is%20a%20technique,loss%20monitoring%20and%20early%20stopping.
-    ## https://machinelearningmastery.com/avoid-overfitting-by-early-stopping-with-xgboost-in-python/#:~:text=XGBoost%20supports%20early%20stopping%20after,which%20no%20improvement%20is%20observed.
-
+    # 1. Force single threading inside the worker to prevent conflicts
     data.table::setDTthreads(1)
-    xgboost_ntrheads <- 1
+    
+    # 2. Define standard parameters (New XGBoost 2.0+ style)
+    xgb_params <- list(
+      objective = "reg:squarederror",
+      nthread = 1
+    )
 
     geoids <- DT[, unique(GEOID)]
 
@@ -174,10 +180,11 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     })
     validation.nrounds.geoids <- train.geoids %>% .[!(. %chin% tune.nrounds.geoids)]
 
-    f_get_xgboost_dmat <- function(DT) {
-      data <- as.matrix(DT[, .SD, .SDcols = patterns("unavailable")])
-      label <- DT[, hp.target]
-      xgb.DMatrix(data = data, label = label)
+    f_get_xgboost_dmat <- function(DT_sub) {
+      # Cast to matrix explicitly to ensure stability
+      data_mat <- as.matrix(DT_sub[, .SD, .SDcols = patterns("unavailable")])
+      label_vec <- DT_sub[, hp.target]
+      xgb.DMatrix(data = data_mat, label = label_vec)
     }
 
     ## -- Tune nrounds -- ##
@@ -188,34 +195,46 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
     dtune <- f_get_xgboost_dmat(DT.tune)
     dvalidation <- f_get_xgboost_dmat(DT.validation)
 
-    watchlist <- list(train=dtune, eval=dvalidation)
+    # UPDATED: Rename 'watchlist' to 'evals'
+    evals_list <- list(train = dtune, eval = dvalidation)
 
     withr::with_seed(seed = train.seed, {
       clf <- xgb.train(
+        params = xgb_params,
         data = dtune, 
         nrounds = 500, 
-        watchlist = watchlist,
-        maximize = FALSE,
-        early_stopping_rounds = 25,
-        objective = "reg:squarederror", ## the objective function
-        verbose = FALSE,
-        nthread = xgboost_ntrheads
+        evals = evals_list, # UPDATED: used to be 'watchlist'
+        verbose = 0,        # UPDATED: 0 is silent in new versions
+        # UPDATED: New Callback system for early stopping
+        callbacks = list(xgb.cb.early.stop(
+          stopping_rounds = 25, 
+          metric_name = "eval_rmse", 
+          maximize = FALSE,
+          verbose = FALSE
+        ))
       )
     })
 
-    ## -- Train -- ##
+    # SAFTEY CHECK: Ensure we actually got a best_iteration
+    # If early stopping didn't trigger, use total rounds
+    best_nrounds <- clf$best_iteration
+    if (is.null(best_nrounds) || length(best_nrounds) == 0) {
+      best_nrounds <- 500
+    }
+
+    ## -- Train Final Model -- ##
 
     DT.train <- DT[GEOID %chin% c(train.geoids)]
     
     dtrain <- f_get_xgboost_dmat(DT.train)
 
     withr::with_seed(seed = train.seed, {
-      xgboost.mod <- xgboost(
-        data = dtrain, ## the data   
-        nrounds = clf$best_iteration, ## max number of boosting iterations
-        objective = "reg:squarederror", ## the objective function
-        verbose = FALSE,
-        nthread = xgboost_ntrheads
+      # UPDATED: Use xgb.train instead of xgboost() wrapper for consistency
+      xgboost.mod <- xgb.train(
+        params = xgb_params,
+        data = dtrain,    
+        nrounds = best_nrounds, 
+        verbose = 0
       )
     })
 
@@ -245,6 +264,8 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
         model = xgboost.mod
       )
 
+      # SHAP calculations
+      # Note: predcontrib and predinteraction are computationally expensive
       DT.shap <- predict(xgboost.mod, newdata = dtest, predcontrib = TRUE) %>%
         as.data.table() %>%
         cbind(DT.test[, .(GEOID, index)], .) %>%
@@ -254,8 +275,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
 
       array.shap.interactions <- predict(xgboost.mod, newdata = dtest,
                                          predinteraction = TRUE)
-      ## The first dimension of `array.shap.interactions` is the number of
-      ## observations/GEOIDs
+      
       stopifnot(length(DT.test$GEOID) == dim(array.shap.interactions)[1])
 
       DT.test <- DT.test[, obs_idx := .I]
@@ -273,7 +293,6 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
                   DT.shap.interactions = DT.shap.interactions
                   ))
     }
-
   }
 
   f_get_xgboost_lu_predictions <- function(index_val) {

@@ -24,6 +24,7 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
   )
 
   expect_equal(res$hp.target, res_run2$hp.target)
+  expect_equal(res$lu_ml_xgboost, res_run2$lu_ml_xgboost)
 
   dt_cnty_lu_2010_without_total <- dt_cnty_lu_2010 %>%
     .[, .SD, .SDcols = !grepl("total_unavailable", names(.))]

@@ -97,22 +97,22 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
   . <- GEOID <- index <- hp.target <- test.geoids <- inference.grp <- NULL
   repeat.id <- fold.id <- fold_id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
   
-  DT.hp <- DT.hp %>%
-    .[order(GEOID, index)]
+  # -- Defensive Copying & Efficient Sorting --
+  DT.hp <- copy(DT.hp)
+  setorder(DT.hp, GEOID, index)
 
-  DT.lu <- DT.lu %>%
-    .[order(GEOID)]
+  DT.lu <- copy(DT.lu)
+  setorder(DT.lu, GEOID)
 
   if (DT.lu[, .N, by = GEOID][, any(N > 1)]) {
-    stop("Error: In lu_ml_xgboost_time_varying(), DT.lu has duplicate GEOIDs.")
+    stop("Error: In lu_ml_xgboost_fixed_inference_set(), DT.lu has duplicate GEOIDs.")
   }
 
   if (DT.hp[, sum(is.na(hp.target))] > 0) {
-    stop("Error: In lu_ml_xgboost_time_varying(), there are missing values in hp.target.")
+    stop("Error: In lu_ml_xgboost_fixed_inference_set(), there are missing values in hp.target.")
   }
 
-  ## delete the saiz circle vars as they are the same as the 50k
-  ## km circle around the central city centroid
+  ## delete the saiz circle vars
   saiz.circle.vars <- names(DT.lu) %>% .[grepl("saiz.circle$", x = .)]
   
   if (length(saiz.circle.vars) > 0)
@@ -132,69 +132,101 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
               "DT.hp$inference.grp must be of type `character`")
   f_stopifnot(names(DT.lu)[1] == "GEOID")
   f_stopifnot(setdiff(unique(DT.hp$GEOID), DT.lu$GEOID) == character(0))
+  
   num.obs.by.geoid <- DT.hp %>% .[complete.cases(.)] %>%
     .[, .N, by = GEOID] %>% .[, N]
   if (var(num.obs.by.geoid) != 0) {
-    print("Warning: In `lu_ml_xgboost_time_varying()`, the `DT.hp` is not a balanced panel.")
+    print("Warning: In `lu_ml_xgboost_fixed_inference_set()`, the `DT.hp` is not a balanced panel.")
   }
 
-  DT.hp <- DT.hp %>%
-    .[order(GEOID, index)]
-
-  DT.lu <- DT.lu %>%
-    .[order(GEOID)]
+  # Re-sort after subsetting
+  setorder(DT.hp, GEOID, index)
+  setorder(DT.lu, GEOID)
   
   indices <- DT.hp[, unique(index)]
-
-  ## <<< REMOVED >>> The global DT.est.base creation was removed from here.
   
   f_train_xgboost <- function(DT, inference.geoids, train.seed) {
+    
+    # Force single threading inside the worker
     data.table::setDTthreads(1)
-    xgboost_ntrheads <- 1
+    
+    # Standard Parameters
+    xgb_params <- list(
+      objective = "reg:squarederror",
+      nthread = 1
+    )
 
     geoids <- DT[, unique(GEOID)]
 
+    # Split Logic
     train.geoids <- geoids %>% .[!(. %chin% inference.geoids)]
+    
     tune.nrounds.geoids <- withr::with_seed(seed = train.seed, {
       sample(train.geoids, size = floor(length(train.geoids) * 0.75))
     })
     validation.nrounds.geoids <- train.geoids %>% .[!(. %chin% tune.nrounds.geoids)]
 
-    f_get_xgboost_dmat <- function(DT) {
-      data <- as.matrix(DT[, .SD, .SDcols = patterns("unavailable")])
-      label <- DT[, hp.target]
-      xgb.DMatrix(data = data, label = label)
+    f_get_xgboost_dmat <- function(DT_sub) {
+      data_mat <- as.matrix(DT_sub[, .SD, .SDcols = patterns("unavailable")])
+      label_vec <- DT_sub[, hp.target]
+      xgb.DMatrix(data = data_mat, label = label_vec)
     }
 
     ## -- Tune nrounds -- ##
     DT.tune <- DT[GEOID %chin% c(tune.nrounds.geoids)]
     DT.validation <- DT[GEOID %chin% c(validation.nrounds.geoids)]
+    
     dtune <- f_get_xgboost_dmat(DT.tune)
     dvalidation <- f_get_xgboost_dmat(DT.validation)
-    watchlist <- list(train=dtune, eval=dvalidation)
+    
+    # UPDATED: 'evals' instead of 'watchlist'
+    evals_list <- list(train = dtune, eval = dvalidation)
+    
     withr::with_seed(seed = train.seed, {
       clf <- xgb.train(
-        data = dtune, nrounds = 500, watchlist = watchlist,
-        maximize = FALSE, early_stopping_rounds = 25,
-        objective = "reg:squarederror", verbose = FALSE, nthread = xgboost_ntrheads
+        params = xgb_params,
+        data = dtune, 
+        nrounds = 500, 
+        evals = evals_list,
+        verbose = 0,
+        # UPDATED: Callbacks with silenced verbosity
+        callbacks = list(xgb.cb.early.stop(
+          stopping_rounds = 25, 
+          metric_name = "eval_rmse", 
+          maximize = FALSE,
+          verbose = FALSE # Silences "Will train until..."
+        ))
       )
     })
 
-    ## -- Train -- ##
+    # Safety check for nrounds
+    best_nrounds <- clf$best_iteration
+    if (is.null(best_nrounds) || length(best_nrounds) == 0) {
+      best_nrounds <- 500
+    }
+
+    ## -- Train Final Model -- ##
     DT.train <- DT[GEOID %chin% c(train.geoids)]
     dtrain <- f_get_xgboost_dmat(DT.train)
+    
     withr::with_seed(seed = train.seed, {
-      xgboost.mod <- xgboost(
-        data = dtrain, nrounds = clf$best_iteration,
-        objective = "reg:squarederror", verbose = FALSE, nthread = xgboost_ntrheads
+      # UPDATED: xgb.train consistency
+      xgboost.mod <- xgb.train(
+        params = xgb_params,
+        data = dtrain, 
+        nrounds = best_nrounds,
+        verbose = 0
       )
     })
 
     ## -- Predict -- ##
     DT.inference <- DT[GEOID %chin% c(inference.geoids)] %>%
       .[order(GEOID, index)]
+    
     dinference <- f_get_xgboost_dmat(DT.inference)
+    
     xgboost.pred <- predict(xgboost.mod, dinference)
+    
     DT.oos.pred <- DT.inference[, .(GEOID, index)] %>%
       .[, lu.best.xgboost := xgboost.pred]
 
@@ -208,15 +240,14 @@ lu_ml_xgboost_fixed_inference_set <- function(DT.hp, DT.lu, seed = 123) {
     DT <- DT.hp[index == index.tmp] %>%
       merge(DT.lu, by = "GEOID")
 
-    ## <<< MODIFICATION START: Inference sets are now created here for each time index >>>
     seed.offset <- DT.hp[, which(unique(index) == c(index_val))]
     
     # Create inference sets based on the groups present in THIS time period's data
     DT.est <- DT[, .(inference.geoids = list(unique(GEOID))), keyby = .(inference.grp)] %>%
       .[, task.seed := seed + seq_len(.N) + seed.offset]
-    ## <<< MODIFICATION END >>>
 
     future::plan(future::multisession(workers = future::availableCores()))
+    
     list.pred.all <- future.apply::future_Map(f_train_xgboost,
                                               DT = list(DT),
                                               inference.geoids = DT.est$inference.geoids,
