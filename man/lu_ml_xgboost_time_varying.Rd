@@ -11,7 +11,8 @@ lu_ml_xgboost_time_varying(
   folds = 5,
   compute.lu.ml.parts = FALSE,
   seed = 123,
-  importance = FALSE
+  importance = FALSE,
+  run_in_parallel = FALSE
 )
 }
 \arguments{
@@ -39,6 +40,12 @@ returns a list containing the out-of-sample predictions, feature importance,
 and SHAP values. Note that setting this to TRUE will significantly increase
 computation time and memory usage. Cannot be TRUE if \code{compute.lu.ml.parts}
 is also TRUE.}
+
+\item{run_in_parallel}{A logical value indicating whether this function should
+internally manage parallel processing. Defaults to FALSE. If TRUE, the function
+will set \code{future::plan(multisession)} using all available cores and reset to
+sequential upon completion. If FALSE, it will respect any existing external
+future plan (or run sequentially if none is set).}
 }
 \value{
 A data.table containing the original house price data (\code{DT.hp}) merged
@@ -68,8 +75,8 @@ predicts on the test folds.
 }
 
 The function uses early stopping during XGBoost training to prevent overfitting.
-It also utilizes parallel processing via the \code{future} package to speed up
-computation.
+It utilizes the \code{future} package for parallel processing. If \code{run_in_parallel}
+is TRUE, it manages the parallel backend internally.
 }
 \examples{
 \dontrun{

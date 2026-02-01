@@ -1,6 +1,6 @@
 Package: lu.ml
 Title: Create the Land Unavailability (LU) Machine Learning (ML) instrument for house prices
-Version: 0.0.11
+Version: 0.0.12
 Authors@R: 
     person(given = "Chandler", 
            family = "Lutz", 
