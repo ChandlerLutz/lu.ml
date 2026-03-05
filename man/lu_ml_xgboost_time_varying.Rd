@@ -2,11 +2,12 @@
 % Please edit documentation in R/lu_ml_xgboost_time_varying.R
 \name{lu_ml_xgboost_time_varying}
 \alias{lu_ml_xgboost_time_varying}
-\title{Time-Varying XGBoost Model for Land Use and House Price Prediction}
+\title{Time-Varying XGBoost Model for Land Use and House Price Prediction with Spatial Grouping}
 \usage{
 lu_ml_xgboost_time_varying(
   DT.hp,
   DT.lu,
+  spatial_group = "GEOID",
   repeats = 5,
   folds = 5,
   compute.lu.ml.parts = FALSE,
@@ -17,10 +18,18 @@ lu_ml_xgboost_time_varying(
 }
 \arguments{
 \item{DT.hp}{A data.table containing house price data with columns 'GEOID',
-'index' (Date), and 'hp.target' (house price target variable).}
+'index' (Date), and 'hp.target' (house price target variable). It must also
+contain the column specified in \code{spatial_group}.}
 
 \item{DT.lu}{A data.table containing land use data with 'GEOID' as the first
-column and other columns representing land use features.}
+column and other columns representing land use features (typically containing
+the string "unavailable").}
+
+\item{spatial_group}{A string specifying the column name in \code{DT.hp} to use for
+spatial cross-validation. Defaults to \code{"GEOID"}. If set to a higher-level
+geography (e.g., \code{"cz20"} for Commuting Zones or \code{"stfp"} for State), the
+function performs \strong{Grouped K-Fold Cross-Validation}, ensuring that no data
+from a specific group is used to train the model for that group.}
 
 \item{repeats}{An integer specifying the number of times to repeat the k-fold
 cross-validation. Defaults to 5.}
@@ -29,85 +38,66 @@ cross-validation. Defaults to 5.}
 Defaults to 5.}
 
 \item{compute.lu.ml.parts}{A logical value indicating whether to compute
-predictions for specific land use components. Defaults to FALSE.}
+predictions for specific land use components (slope, water, wetlands, etc.).
+Defaults to FALSE.}
 
-\item{seed}{An integer seed for reproducibility of random sampling and cross-validation
-folds. Defaults to 123.}
+\item{seed}{An integer seed for reproducibility of random sampling and
+cross-validation folds. Defaults to 123.}
 
 \item{importance}{A logical value indicating whether to compute and return
 feature importance and SHAP values. Defaults to FALSE. If TRUE, the function
-returns a list containing the out-of-sample predictions, feature importance,
-and SHAP values. Note that setting this to TRUE will significantly increase
-computation time and memory usage. Cannot be TRUE if \code{compute.lu.ml.parts}
-is also TRUE.}
+returns a list containing out-of-sample predictions, feature importance,
+and SHAP values. Note: Cannot be TRUE if \code{compute.lu.ml.parts} is also TRUE.}
 
 \item{run_in_parallel}{A logical value indicating whether this function should
-internally manage parallel processing. Defaults to FALSE. If TRUE, the function
-will set \code{future::plan(multisession)} using all available cores and reset to
-sequential upon completion. If FALSE, it will respect any existing external
-future plan (or run sequentially if none is set).}
+internally manage parallel processing via \code{future}. Defaults to FALSE.}
 }
 \value{
-A data.table containing the original house price data (\code{DT.hp}) merged
-with out-of-sample predictions from the XGBoost model. If
-\code{compute.lu.ml.parts} is TRUE, it also includes predictions for land use
-components (parts, total, slope, water, wetlands).
+If \code{importance = FALSE}, returns a \code{data.table} containing the original
+house price data merged with out-of-sample predictions. The columns are
+ordered: \code{GEOID}, \code{spatial_group} (if not GEOID), \code{index}, \code{hp.target},
+and \code{lu_ml_xgboost}.
+
+If \code{importance = TRUE}, returns a list:
+\itemize{
+\item \code{DT.oos.pred.panel}: The prediction data.table described above.
+\item \code{DT.xgb.importance.panel}: Average feature importance (Gain) per time index.
+\item \code{DT.xgb.shap.panel}: Average SHAP values per GEOID, index, and feature.
+}
 }
 \description{
 This function trains an XGBoost model to predict house prices using time-varying
-land use data. It performs repeated k-fold cross-validation to assess model
-performance and can optionally compute predictions based on specific land use
-components (parts, total, slope, water, wetlands).
+land use data. It performs repeated k-fold cross-validation—optionally grouped
+by a spatial variable—to assess model performance and prevent spatial data leakage.
 }
 \details{
 The function performs the following steps:
 \enumerate{
-\item Orders the house price data by GEOID and index.
-\item Checks for missing values in the house price target.
-\item Removes 'saiz.circle' variables from the land use data.
-\item Subsets both data.tables to ensure they have the same GEOIDs.
-\item Performs various data integrity checks.
-\item Sets up repeated k-fold cross-validation.
-\item For each time index, trains an XGBoost model on the training folds and
-predicts on the test folds.
-\item Optionally, computes predictions for specific land use components.
-\item Merges the predictions with the original house price data.
+\item Identifies unique spatial units based on the \code{spatial_group} column.
+\item For each time index, it splits the data into K-folds based on those groups.
+\item For each fold, it identifies a "tuning" set (75\% of training groups) and
+a "validation" set (25\% of training groups).
+\item Uses \code{xgb.train} with early stopping (25 rounds) based on the validation
+set to determine the optimal number of iterations.
+\item Re-trains the model on the full training set (tuning + validation) and
+predicts on the held-out spatial groups.
+\item Aggregates predictions across all repeats and folds.
 }
 
-The function uses early stopping during XGBoost training to prevent overfitting.
-It utilizes the \code{future} package for parallel processing. If \code{run_in_parallel}
-is TRUE, it manages the parallel backend internally.
+By using a \code{spatial_group} broader than \code{GEOID}, the function ensures the model
+learns structural relationships that generalize across regions, mitigating
+concerns about spatial autocorrelation and data leakage.
 }
 \examples{
 \dontrun{
-library(data.table)
-library(lu.ml)
+# Standard GEOID-level CV
+res <- lu_ml_xgboost_time_varying(DT.hp = dt_hp, DT.lu = dt_lu)
 
-# Load the Mian-Sufi 2014 data
-data(dt_mian_sufi_2014)
-
-# Load the county-level land unavailability data for 2010
-data(dt_cnty_lu_2010)
-
-# Prepare the Mian-Sufi data: select relevant columns, rename, and remove NAs
-dt_mian_sufi_2014 <- dt_mian_sufi_2014 |>
-  _[, .(GEOID = fips, index = as.Date("2002-01-01"),
-        hp.target = house.net.worth)] |>
-  _[!is.na(hp.target)]
-
-# Prepare the land unavailability data: select GEOID and land unavailability columns
-dt_cnty_lu_2010 <- dt_cnty_lu_2010 |>
-  _[, .(GEOID, unavailable = .SD),
-    .SDcols = grep("unavailable", names(dt_cnty_lu_2010), value = TRUE)]
-
-# Run the lu_ml_xgboost_time_varying function to generate an instrument
-out <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
-
-# Calculate and print the correlation between the house price target and the generated instrument
-print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml_xgboost])))
-
-# Print the resulting data.table
-print(out)
+# Spatial Grouped CV (using Commuting Zones)
+res_cz <- lu_ml_xgboost_time_varying(
+  DT.hp = dt_hp, 
+  DT.lu = dt_lu, 
+  spatial_group = "cz20"
+)
 }
-
 }

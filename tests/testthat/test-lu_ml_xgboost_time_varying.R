@@ -46,6 +46,24 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
   ##     res[, mean((hp.target - lu_ml_xgboost) ^ 2)]
   ## )
 
+  dt_mian_sufi_2014_with_stfp <- copy(dt_mian_sufi_2014) %>%
+    .[, stfp := substr(GEOID, 1, 2)]
+
+  res_with_stfp_spatial_sampling <- lu_ml_xgboost_time_varying(
+    DT.hp = dt_mian_sufi_2014_with_stfp, DT.lu = dt_cnty_lu_2010,
+    spatial_group = "stfp"
+  )
+
+  expect_true(is.data.table(res_with_stfp_spatial_sampling))
+  expect_equal(
+    names(res_with_stfp_spatial_sampling),
+    c("GEOID", "stfp", "index", "hp.target", "lu_ml_xgboost")
+  )
+  ## Round to just 1 decimal place as results depend somewhat on the xgboost version
+  expect_equal(
+    round(res_with_stfp_spatial_sampling[, cor(hp.target, lu_ml_xgboost)], 1), 0.2
+  )
+
   res_with_importance <- lu_ml_xgboost_time_varying(
     DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010, importance = TRUE
   )

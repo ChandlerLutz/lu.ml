@@ -1,539 +1,253 @@
-#' Time-Varying XGBoost Model for Land Use and House Price Prediction
+#' Time-Varying XGBoost Model for Land Use and House Price Prediction with Spatial Grouping
 #'
 #' This function trains an XGBoost model to predict house prices using time-varying
-#' land use data. It performs repeated k-fold cross-validation to assess model
-#' performance and can optionally compute predictions based on specific land use
-#' components (parts, total, slope, water, wetlands).
+#' land use data. It performs repeated k-fold cross-validation—optionally grouped 
+#' by a spatial variable—to assess model performance and prevent spatial data leakage.
 #'
 #' @param DT.hp A data.table containing house price data with columns 'GEOID',
-#'   'index' (Date), and 'hp.target' (house price target variable).
+#'   'index' (Date), and 'hp.target' (house price target variable). It must also 
+#'   contain the column specified in `spatial_group`.
 #' @param DT.lu A data.table containing land use data with 'GEOID' as the first
-#'   column and other columns representing land use features.
+#'   column and other columns representing land use features (typically containing 
+#'   the string "unavailable").
+#' @param spatial_group A string specifying the column name in `DT.hp` to use for 
+#'   spatial cross-validation. Defaults to `"GEOID"`. If set to a higher-level 
+#'   geography (e.g., `"cz20"` for Commuting Zones or `"stfp"` for State), the 
+#'   function performs **Grouped K-Fold Cross-Validation**, ensuring that no data 
+#'   from a specific group is used to train the model for that group.
 #' @param repeats An integer specifying the number of times to repeat the k-fold
 #'   cross-validation. Defaults to 5.
 #' @param folds An integer specifying the number of folds for cross-validation.
 #'   Defaults to 5.
 #' @param compute.lu.ml.parts A logical value indicating whether to compute
-#'   predictions for specific land use components. Defaults to FALSE.
-#' @param seed An integer seed for reproducibility of random sampling and cross-validation
-#'   folds. Defaults to 123.
+#'   predictions for specific land use components (slope, water, wetlands, etc.). 
+#'   Defaults to FALSE.
+#' @param seed An integer seed for reproducibility of random sampling and 
+#'   cross-validation folds. Defaults to 123.
 #' @param importance A logical value indicating whether to compute and return
 #'   feature importance and SHAP values. Defaults to FALSE. If TRUE, the function
-#'   returns a list containing the out-of-sample predictions, feature importance,
-#'   and SHAP values. Note that setting this to TRUE will significantly increase
-#'   computation time and memory usage. Cannot be TRUE if `compute.lu.ml.parts`
-#'   is also TRUE.
+#'   returns a list containing out-of-sample predictions, feature importance,
+#'   and SHAP values. Note: Cannot be TRUE if `compute.lu.ml.parts` is also TRUE.
 #' @param run_in_parallel A logical value indicating whether this function should
-#'   internally manage parallel processing. Defaults to FALSE. If TRUE, the function
-#'   will set `future::plan(multisession)` using all available cores and reset to
-#'   sequential upon completion. If FALSE, it will respect any existing external
-#'   future plan (or run sequentially if none is set).
+#'   internally manage parallel processing via `future`. Defaults to FALSE. 
 #'
-#' @return A data.table containing the original house price data (`DT.hp`) merged
-#'   with out-of-sample predictions from the XGBoost model. If
-#'   `compute.lu.ml.parts` is TRUE, it also includes predictions for land use
-#'   components (parts, total, slope, water, wetlands).
+#' @return If `importance = FALSE`, returns a `data.table` containing the original 
+#'   house price data merged with out-of-sample predictions. The columns are 
+#'   ordered: `GEOID`, `spatial_group` (if not GEOID), `index`, `hp.target`, 
+#'   and `lu_ml_xgboost`.
+#'
+#'   If `importance = TRUE`, returns a list:
+#'   \itemize{
+#'     \item \code{DT.oos.pred.panel}: The prediction data.table described above.
+#'     \item \code{DT.xgb.importance.panel}: Average feature importance (Gain) per time index.
+#'     \item \code{DT.xgb.shap.panel}: Average SHAP values per GEOID, index, and feature.
+#'   }
 #'
 #' @details
 #' The function performs the following steps:
 #' \enumerate{
-#'   \item Orders the house price data by GEOID and index.
-#'   \item Checks for missing values in the house price target.
-#'   \item Removes 'saiz.circle' variables from the land use data.
-#'   \item Subsets both data.tables to ensure they have the same GEOIDs.
-#'   \item Performs various data integrity checks.
-#'   \item Sets up repeated k-fold cross-validation.
-#'   \item For each time index, trains an XGBoost model on the training folds and
-#'     predicts on the test folds.
-#'   \item Optionally, computes predictions for specific land use components.
-#'   \item Merges the predictions with the original house price data.
+#'   \item Identifies unique spatial units based on the `spatial_group` column.
+#'   \item For each time index, it splits the data into K-folds based on those groups.
+#'   \item For each fold, it identifies a "tuning" set (75% of training groups) and 
+#'     a "validation" set (25% of training groups).
+#'   \item Uses `xgb.train` with early stopping (25 rounds) based on the validation 
+#'     set to determine the optimal number of iterations.
+#'   \item Re-trains the model on the full training set (tuning + validation) and 
+#'     predicts on the held-out spatial groups.
+#'   \item Aggregates predictions across all repeats and folds.
 #' }
 #'
-#' The function uses early stopping during XGBoost training to prevent overfitting.
-#' It utilizes the `future` package for parallel processing. If `run_in_parallel`
-#' is TRUE, it manages the parallel backend internally.
+#' By using a `spatial_group` broader than `GEOID`, the function ensures the model 
+#' learns structural relationships that generalize across regions, mitigating 
+#' concerns about spatial autocorrelation and data leakage.
 #'
 #' @import data.table
 #' @import xgboost
 #' @import future
 #' @import future.apply
-#' @importFrom magrittr %>%
-#' @importFrom stats complete.cases predict var
+#' @importFrom stats predict complete.cases var
 #'
 #' @examples
 #' \dontrun{
-#' library(data.table)
-#' library(lu.ml)
+#' # Standard GEOID-level CV
+#' res <- lu_ml_xgboost_time_varying(DT.hp = dt_hp, DT.lu = dt_lu)
 #'
-#' # Load the Mian-Sufi 2014 data
-#' data(dt_mian_sufi_2014)
-#'
-#' # Load the county-level land unavailability data for 2010
-#' data(dt_cnty_lu_2010)
-#'
-#' # Prepare the Mian-Sufi data: select relevant columns, rename, and remove NAs
-#' dt_mian_sufi_2014 <- dt_mian_sufi_2014 |>
-#'   _[, .(GEOID = fips, index = as.Date("2002-01-01"),
-#'         hp.target = house.net.worth)] |>
-#'   _[!is.na(hp.target)]
-#'
-#' # Prepare the land unavailability data: select GEOID and land unavailability columns
-#' dt_cnty_lu_2010 <- dt_cnty_lu_2010 |>
-#'   _[, .(GEOID, unavailable = .SD),
-#'     .SDcols = grep("unavailable", names(dt_cnty_lu_2010), value = TRUE)]
-#'
-#' # Run the lu_ml_xgboost_time_varying function to generate an instrument
-#' out <- lu_ml_xgboost_time_varying(DT.hp = dt_mian_sufi_2014, DT.lu = dt_cnty_lu_2010)
-#'
-#' # Calculate and print the correlation between the house price target and the generated instrument
-#' print(paste("Correlation:", cor(out[, hp.target], out[, lu_ml_xgboost])))
-#'
-#' # Print the resulting data.table
-#' print(out)
+#' # Spatial Grouped CV (using Commuting Zones)
+#' res_cz <- lu_ml_xgboost_time_varying(
+#'   DT.hp = dt_hp, 
+#'   DT.lu = dt_lu, 
+#'   spatial_group = "cz20"
+#' )
 #' }
-#' 
 #' @export
-lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, repeats = 5, folds = 5,
+lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, 
+                                       spatial_group = "GEOID",
+                                       repeats = 5, folds = 5,
                                        compute.lu.ml.parts = FALSE, seed = 123,
                                        importance = FALSE, run_in_parallel = FALSE) {
   
   ## For R cmd check
-  . <- GEOID <- index <- hp.target <- test.geoids <- obs_idx <- NULL
+  . <- GEOID <- index <- hp.target <- test.groups <- obs_idx <- NULL
   repeat.id <- fold.id <- fold_id <- task.seed <- lu.best.xgboost <- N <- .N <- NULL
   Gain <- Feature <- BIAS <- shap_value <- feature <- feature1 <- feature2 <- NULL
   
   if (compute.lu.ml.parts == TRUE && importance == TRUE) {
-    stop("Error: In lu_ml_xgboost_time_varying(), you cannot set both `compute.lu.ml.parts` and `importance` to TRUE. Please set one of them to FALSE.")
+    stop("Error: You cannot set both `compute.lu.ml.parts` and `importance` to TRUE.")
   }
   
-  DT.hp <- copy(DT.hp) %>%
-    setorder(GEOID, index)
-  
-  DT.lu <- copy(DT.lu) %>%
-    setorder(GEOID)
-  
-  if (DT.lu[, .N, by = GEOID][, any(N > 1)]) {
-    stop("Error: In lu_ml_xgboost_time_varying(), DT.lu has duplicate GEOIDs.")
+  if (!(spatial_group %in% names(DT.hp))) {
+    stop(paste0("Error: spatial_group column '", spatial_group, "' not found in DT.hp."))
   }
+
+  DT.hp <- copy(DT.hp) %>% setorder(GEOID, index)
+  DT.lu <- copy(DT.lu) %>% setorder(GEOID)
   
-  if (DT.hp[, sum(is.na(hp.target))] > 0) {
-    stop("Error: In lu_ml_xgboost_time_varying(), there are missing values in hp.target.")
-  }
+  required_cols <- unique(c("GEOID", "index", "hp.target", spatial_group))
+  DT.hp <- DT.hp[, ..required_cols]
   
-  ## delete the saiz circle vars as they are the same as the 50k
-  ## km circle around the central city centroid
+  if (DT.lu[, .N, by = GEOID][, any(N > 1)]) stop("Error: DT.lu has duplicate GEOIDs.")
+  if (DT.hp[, sum(is.na(hp.target))] > 0) stop("Error: Missing values in hp.target.")
+  
   saiz.circle.vars <- names(DT.lu) %>% .[grepl("saiz.circle$", x = .)]
-  
-  if (length(saiz.circle.vars) > 0)
-    DT.lu <- DT.lu[, c(saiz.circle.vars) := NULL]
+  if (length(saiz.circle.vars) > 0) DT.lu <- DT.lu[, c(saiz.circle.vars) := NULL]
   
   DT.hp <- DT.hp[GEOID %chin% c(DT.lu$GEOID)]
   DT.lu <- DT.lu[GEOID %chin% c(DT.hp$GEOID)]
   
-  ## Checks
-  f_stopifnot(
-    names(DT.hp) == c("GEOID", "index", "hp.target"),
-    "DT.hp does not have column names 'GEOID', 'index', 'hp.target'"
-  )
-  f_stopifnot(DT.hp[, class(index)] == "Date",
-              "DT.hp$index must be of type `Date`")
-  f_stopifnot(names(DT.lu)[1] == "GEOID")
-  f_stopifnot(setdiff(unique(DT.hp$GEOID), DT.lu$GEOID) == character(0))
-  num.obs.by.geoid <- DT.hp %>% .[complete.cases(.)] %>%
-    .[, .N, by = GEOID] %>% .[, N]
-  if (var(num.obs.by.geoid) != 0) {
-    print("Warning: In `lu_ml_xgboost_time_varying()`, the `DT.hp` is not a balanced panel.")
-  }
-  
-  DT.hp <- DT.hp %>%
-    .[order(GEOID, index)]
-  
-  DT.lu <- DT.lu %>%
-    .[order(GEOID)]
-  
-  geoids <- DT.hp[, unique(GEOID)]
-  
-  fold.size <- floor(length(geoids) / folds)
-  
-  DT.panel.out <- DT.hp[, .(GEOID, index)]
-  
   indices <- DT.hp[, unique(index)]
   
-  
-  ## For early stopping, see
-  ## https://codingwiththomas.blogspot.com/2016/03/xgboost-validation-and-early-stopping.html
-  ## https://mljar.com/blog/xgboost-early-stopping/#:~:text=Early%20stopping%20is%20a%20technique,loss%20monitoring%20and%20early%20stopping.
-  ## https://machinelearningmastery.com/avoid-overfitting-by-early-stopping-with-xgboost-in-python/#:~:text=XGBoost%20supports%20early%20stopping%20after,which%20no%20improvement%20is%20observed.
-  
-  f_train_xgboost <- function(DT, test.geoids, train.seed) {
-    
-    # 1. Force single threading inside the worker to prevent conflicts
+  # --- Worker Function ---
+  f_train_xgboost <- function(DT, test.groups, train.seed, spatial_col, importance_flag) {
     data.table::setDTthreads(1)
+    xgb_params <- list(objective = "reg:squarederror", nthread = 1)
     
-    # 2. Define standard parameters (New XGBoost 2.0+ style)
-    xgb_params <- list(
-      objective = "reg:squarederror",
-      nthread = 1
-    )
+    all_groups <- DT[, unique(get(spatial_col))]
+    train.groups <- all_groups[!(all_groups %in% test.groups)]
     
-    geoids <- DT[, unique(GEOID)]
-    
-    train.geoids <- geoids %>% .[!(. %chin% test.geoids)]
-    tune.nrounds.geoids <- withr::with_seed(seed = train.seed, {
-      sample(train.geoids, size = floor(length(train.geoids) * 0.75))
+    tune.groups <- withr::with_seed(seed = train.seed, {
+      sample(train.groups, size = floor(length(train.groups) * 0.75))
     })
-    validation.nrounds.geoids <- train.geoids %>% .[!(. %chin% tune.nrounds.geoids)]
+    val.groups <- train.groups[!(train.groups %in% tune.groups)]
     
     f_get_xgboost_dmat <- function(DT_sub) {
-      # Cast to matrix explicitly to ensure stability
       data_mat <- as.matrix(DT_sub[, .SD, .SDcols = patterns("unavailable")])
       label_vec <- DT_sub[, hp.target]
-      xgb.DMatrix(data = data_mat, label = label_vec)
+      return(xgboost::xgb.DMatrix(data = data_mat, label = label_vec))
     }
     
-    ## -- Tune nrounds -- ##
-    
-    DT.tune <- DT[GEOID %chin% c(tune.nrounds.geoids)]
-    DT.validation <- DT[GEOID %chin% c(validation.nrounds.geoids)]
-    
-    dtune <- f_get_xgboost_dmat(DT.tune)
-    dvalidation <- f_get_xgboost_dmat(DT.validation)
-    
-    # UPDATED: Rename 'watchlist' to 'evals'
-    evals_list <- list(train = dtune, eval = dvalidation)
+    dtune <- f_get_xgboost_dmat(DT[get(spatial_col) %in% tune.groups])
+    dvalidation <- f_get_xgboost_dmat(DT[get(spatial_col) %in% val.groups])
     
     withr::with_seed(seed = train.seed, {
-      clf <- xgb.train(
-        params = xgb_params,
-        data = dtune, 
-        nrounds = 500, 
-        evals = evals_list, # UPDATED: used to be 'watchlist'
-        verbose = 0,        # UPDATED: 0 is silent in new versions
-        # UPDATED: New Callback system for early stopping
-        callbacks = list(xgb.cb.early.stop(
-          stopping_rounds = 25, 
-          metric_name = "eval_rmse", 
-          maximize = FALSE,
-          verbose = FALSE
-        ))
+      clf <- xgboost::xgb.train(
+        params = xgb_params, data = dtune, nrounds = 500, 
+        evals = list(train = dtune, eval = dvalidation),
+        verbose = 0,
+        callbacks = list(xgboost::xgb.cb.early.stop(25, metric_name = "eval_rmse", maximize = FALSE, verbose = FALSE))
       )
     })
     
-    # SAFTEY CHECK: Ensure we actually got a best_iteration
-    # If early stopping didn't trigger, use total rounds
-    best_nrounds <- clf$best_iteration
-    if (is.null(best_nrounds) || length(best_nrounds) == 0) {
-      best_nrounds <- 500
-    }
-    
-    ## -- Train Final Model -- ##
-    
-    DT.train <- DT[GEOID %chin% c(train.geoids)]
-    
-    dtrain <- f_get_xgboost_dmat(DT.train)
+    best_nrounds <- if (!is.null(clf$best_iteration)) clf$best_iteration else 500
+    dtrain <- f_get_xgboost_dmat(DT[get(spatial_col) %in% train.groups])
     
     withr::with_seed(seed = train.seed, {
-      # UPDATED: Use xgb.train instead of xgboost() wrapper for consistency
-      xgboost.mod <- xgb.train(
-        params = xgb_params,
-        data = dtrain,    
-        nrounds = best_nrounds, 
-        verbose = 0
-      )
+      xgboost.mod <- xgboost::xgb.train(params = xgb_params, data = dtrain, nrounds = best_nrounds, verbose = 0)
     })
     
-    ## -- Predict -- ##
-    
-    DT.test <- DT[GEOID %chin% c(test.geoids)] %>%
-      .[order(GEOID, index)]
-    
-    stopifnot(
-      nrow(DT.test) == length(test.geoids),
-      nrow(DT.test) == length(unique(DT.test$GEOID))
-    )
-    
+    DT.test <- DT[get(spatial_col) %in% test.groups] %>% setorder(GEOID, index)
     dtest <- f_get_xgboost_dmat(DT.test)
+    xgboost.pred <- stats::predict(xgboost.mod, dtest)
     
-    xgboost.pred <- predict(xgboost.mod, dtest)
+    DT.oos.pred <- DT.test[, .(GEOID, index)] %>% .[, lu.best.xgboost := xgboost.pred]
     
-    DT.oos.pred <- DT.test[, .(GEOID, index)] %>%
-      .[, lu.best.xgboost := xgboost.pred]
-    
-    if (importance ==  FALSE) {
+    if (!importance_flag) {
       return(list(DT.oos.pred = DT.oos.pred))
     } else {
+      # 1. Feature Importance
+      DT.xgb.importance <- xgboost::xgb.importance(feature_names = colnames(dtrain), model = xgboost.mod)
       
-      DT.xgb.importance <- xgb.importance(
-        feature_names = colnames(dtrain),
-        model = xgboost.mod
-      )
-      
-      # SHAP calculations
-      # Note: predcontrib and predinteraction are computationally expensive
-      DT.shap <- predict(xgboost.mod, newdata = dtest, predcontrib = TRUE) %>%
-        as.data.table() %>%
+      # 2. SHAP Values
+      DT.shap <- data.table::as.data.table(stats::predict(xgboost.mod, newdata = dtest, predcontrib = TRUE)) %>%
         cbind(DT.test[, .(GEOID, index)], .) %>%
-        melt(id.vars = c("GEOID", "index"),
-             variable.name = "feature", value.name = "shap_value",
-             variable.factor = FALSE)
+        data.table::melt(id.vars = c("GEOID", "index"), variable.name = "feature", value.name = "shap_value", variable.factor = FALSE)
       
-      array.shap.interactions <- predict(xgboost.mod, newdata = dtest,
-                                         predinteraction = TRUE)
+      # 3. SHAP Interactions
+      array.shap.interactions <- stats::predict(xgboost.mod, newdata = dtest, predinteraction = TRUE)
+      DT.shap.interactions <- data.table::as.data.table(array.shap.interactions) %>%
+        setnames(c("V1", "V2", "V3", "value"), c("obs_idx", "feature1", "feature2", "shap_value")) %>%
+        .[, `:=`(GEOID = DT.test$GEOID[obs_idx], index = DT.test$index[obs_idx])] %>%
+        .[, obs_idx := NULL]
       
-      stopifnot(length(DT.test$GEOID) == dim(array.shap.interactions)[1])
-      
-      DT.test <- DT.test[, obs_idx := .I]
-      
-      DT.shap.interactions <- as.data.table(array.shap.interactions) %>%
-        setnames(c("V1", "V2", "V3", "value"),
-                 c("obs_idx", "feature1", "feature2", "shap_value")) %>%
-        merge(DT.test[, .(obs_idx, GEOID, index)], by = "obs_idx") %>%
-        .[, obs_idx := NULL] %>%
-        setcolorder(c("GEOID", "index", "feature1", "feature2", "shap_value"))
-      
-      return(list(DT.oos.pred = DT.oos.pred, 
-                  DT.xgb.importance = DT.xgb.importance, 
-                  DT.shap = DT.shap,
-                  DT.shap.interactions = DT.shap.interactions
-      ))
+      return(list(DT.oos.pred = DT.oos.pred, DT.xgb.importance = DT.xgb.importance, 
+                  DT.shap = DT.shap, DT.shap.interactions = DT.shap.interactions))
     }
   }
   
+  # --- Prediction Loop ---
   f_get_xgboost_lu_predictions <- function(index_val) {
+    DT <- DT.hp[index == index_val] %>% merge(DT.lu, by = "GEOID")
+    unique_groups <- DT[, unique(get(spatial_group))]
+    seed.offset <- DT.hp[, which(unique(index) == index_val)]
     
-    print(index_val)
-    
-    index.tmp <- index_val
-    
-    DT <- DT.hp[index == index.tmp] %>%
-      merge(DT.lu, by = "GEOID")
-    
-    geoids.this.index <- DT[, unique(GEOID)]
-    seed.offset <- DT.hp[, which(unique(index) == c(index_val))]
-    
-    DT.est <- expand.grid(
-      repeat.id = 1:repeats, 
-      fold.id = 1:folds
-    ) %>% setDT() %>%
-      .[order(repeat.id)] %>%
-      .[, test.geoids := list()] %>%
+    DT.est <- expand.grid(repeat.id = 1:repeats, fold.id = 1:folds) %>% 
+      setDT() %>% .[, test.groups := list()] %>%
       .[, task.seed := seed + repeat.id + fold.id + seed.offset]
     
     for (i in 1:repeats) {
-      geoids.rand <- withr::with_seed(seed = seed + i + seed.offset, {
-        sample(geoids.this.index, length(geoids.this.index))
-      })
-      
-      dt_folds <- data.table(GEOID = geoids.rand) %>%
-        .[, fold_id := rep(1:folds, length.out = .N)]
-      
-      test.ids.list <- dt_folds[, .(test.geoids = list(GEOID)), by = fold_id]$test.geoids
-      
-      DT.est <- DT.est %>%
-        .[repeat.id == i, test.geoids := test.ids.list]
-      
+      groups.rand <- withr::with_seed(seed = seed + i + seed.offset, { sample(unique_groups, length(unique_groups)) })
+      dt_folds <- data.table(grp = groups.rand) %>% .[, fold_id := rep(1:folds, length.out = .N)]
+      DT.est[repeat.id == i, test.groups := dt_folds[, .(list(grp)), by = fold_id]$V1]
     }
     
-    if (run_in_parallel) {
-      future::plan(future::multisession(workers = future::availableCores()))
-    }
-    
-    list.pred.all <- future.apply::future_Map(f_train_xgboost,
-                                              DT = list(DT),
-                                              test.geoids = DT.est$test.geoids,
-                                              train.seed = DT.est$task.seed,
-                                              future.seed = TRUE)
-    
-    if (run_in_parallel) {
-      future::plan(future::sequential())
-    }
+    if (run_in_parallel) future::plan(future::multisession(workers = future::availableCores()))
+    list.pred.all <- future.apply::future_Map(f_train_xgboost, DT = list(DT), 
+                                              test.groups = DT.est$test.groups, 
+                                              train.seed = DT.est$task.seed, 
+                                              spatial_col = spatial_group, 
+                                              importance_flag = importance,
+                                              future.seed = TRUE, future.packages = c("xgboost", "data.table"))
+    if (run_in_parallel) future::plan(future::sequential())
     
     DT.oos.pred.all <- lapply(list.pred.all, \(x) x$DT.oos.pred) %>% rbindlist() %>%
       .[, .(lu_ml_xgboost = mean(lu.best.xgboost)), by = .(GEOID, index)]
     
-    if (importance == TRUE) {
-      
-      DT.xgb.shap.all <- lapply(list.pred.all, \(x) x$DT.shap) %>% 
-        rbindlist() %>%
-        .[, .(shap_value = mean(shap_value, na.rm = TRUE)),
-          keyby = .(GEOID, index, feature)]
-      
-      DT.xgb.shap.interactions.all <- lapply(
-        list.pred.all, \(x) x$DT.shap.interactions
-      ) %>%
-        rbindlist() %>%
-        .[, lapply(.SD, mean, na.rm = TRUE), by = .(GEOID, index, feature1, feature2)]
-      
-      DT.xgb.importance.all <- lapply(list.pred.all, \(x) x$DT.xgb.importance) %>%
-        rbindlist() %>%
-        .[, .(Gain = mean(Gain, na.rm = TRUE)), by = .(Feature)] %>%
-        .[, Gain := Gain / sum(Gain)] %>%
-        .[order(-Gain)] %>%
-        .[, index := c(index_val)] %>%
+    if (importance) {
+      # Aggregate Importance and set column order
+      DT.xgb.importance.all <- lapply(list.pred.all, \(x) x$DT.xgb.importance) %>% rbindlist() %>%
+        .[, .(Gain = mean(Gain)), by = Feature] %>% .[, index := index_val] %>%
         setcolorder(c("index", "Feature", "Gain"))
       
-    }
-    
-    
-    if (compute.lu.ml.parts == FALSE && importance == FALSE)  {
-      return(DT.oos.pred.all)
-    } else if (compute.lu.ml.parts == FALSE && importance == TRUE) {
+      DT.xgb.shap.all <- lapply(list.pred.all, \(x) x$DT.shap) %>% rbindlist() %>%
+        .[, .(shap_value = mean(shap_value)), keyby = .(GEOID, index, feature)]
+      
+      DT.xgb.shap.interactions.all <- lapply(list.pred.all, \(x) x$DT.shap.interactions) %>% rbindlist() %>%
+        .[, .(shap_value = mean(shap_value)), by = .(GEOID, index, feature1, feature2)]
       
       return(list(DT.oos.pred = DT.oos.pred.all, 
                   DT.xgb.importance = DT.xgb.importance.all, 
                   DT.xgb.shap = DT.xgb.shap.all,
                   DT.xgb.shap.interactions = DT.xgb.shap.interactions.all))
     }
-    
-    ##Parts
-    parts.cols <- names(DT) %>% .[grepl("^slope|^water|^wetlands", x = .)]
-    
-    if (run_in_parallel) {
-      future::plan(future::multisession(workers = future::availableCores()))
-    }
-    
-    list.pred.parts <- future.apply::future_Map(
-      f_train_xgboost,
-      DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", parts.cols)]),
-      test.geoids = DT.est$test.geoids,
-      train.seed = DT.est$task.seed,
-      future.seed = TRUE
-    )
-    
-    if (run_in_parallel) {
-      future::plan(future::sequential())
-    }
-    
-    DT.oos.pred.parts <- lapply(list.pred.parts, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_xgboost_parts = mean(lu.best.xgboost)), by = .(GEOID, index)]
-    
-    
-    ## Total 
-    total.cols <- names(DT) %>% .[grepl("^total", x = .)]
-    
-    if (run_in_parallel) {
-      future::plan(future::multisession(workers = future::availableCores()))
-    }
-    
-    list.pred.total <- future.apply::future_Map(
-      f_train_xgboost,
-      DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", total.cols)]),
-      test.geoids = DT.est$test.geoids,
-      train.seed = DT.est$task.seed,
-      future.seed = TRUE
-    )
-    
-    if (run_in_parallel) {
-      future::plan(future::sequential())
-    }
-    
-    DT.oos.pred.total <- lapply(list.pred.total, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_xgboost_total = mean(lu.best.xgboost)), by = .(GEOID, index)]
-    
-    ## Slope 
-    slope.cols <- names(DT) %>% .[grepl("^slope", x = .)]
-    
-    if (run_in_parallel) {
-      future::plan(future::multisession(workers = future::availableCores()))
-    }
-    
-    list.pred.slope <- future.apply::future_Map(
-      f_train_xgboost,
-      DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", slope.cols)]),
-      test.geoids = DT.est$test.geoids,
-      train.seed = DT.est$task.seed,
-      future.seed = TRUE
-    )
-    
-    if (run_in_parallel) {
-      future::plan(future::sequential())
-    }
-    
-    DT.oos.pred.slope <- lapply(list.pred.slope, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_xgboost_slope = mean(lu.best.xgboost)), by = .(GEOID, index)]
-    
-    ## Water 
-    water.cols <- names(DT) %>% .[grepl("^water", x = .)]
-    
-    if (run_in_parallel) {
-      future::plan(future::multisession(workers = future::availableCores()))
-    }
-    
-    list.pred.water <- future.apply::future_Map(
-      f_train_xgboost,
-      DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", water.cols)]),
-      test.geoids = DT.est$test.geoids,
-      train.seed = DT.est$task.seed,
-      future.seed = TRUE
-    )
-    
-    if (run_in_parallel) {
-      future::plan(future::sequential())
-    }
-    
-    DT.oos.pred.water <- lapply(list.pred.water, \(x) x$DT.oos.pred) %>% rbindlist %>%
-      .[, .(lu_ml_xgboost_water = mean(lu.best.xgboost)), by = .(GEOID, index)]
-    
-    ## Wetlands 
-    wetlands.cols <- names(DT) %>% .[grepl("^wetlands", x = .)]
-    
-    if (run_in_parallel) {
-      future::plan(future::multisession(workers = future::availableCores()))
-    }
-    
-    list.pred.wetlands <- future.apply::future_Map(
-      f_train_xgboost,
-      DT = list(DT[, .SD, .SDcols = c("GEOID", "index", "hp.target", wetlands.cols)]),
-      test.geoids = DT.est$test.geoids,
-      train.seed = DT.est$task.seed,
-      future.seed = TRUE
-    )
-    
-    if (run_in_parallel) {
-      future::plan(future::sequential())
-    }
-    
-    DT.oos.pred.wetlands <- lapply(list.pred.wetlands, \(x) x$DT.oos.pred) %>%
-      rbindlist %>%
-      .[, .(lu_ml_xgboost_wetlands = mean(lu.best.xgboost)), by = .(GEOID, index)]
-    
-    DT.oos.pred <- merge(
-      DT.oos.pred.all, DT.oos.pred.parts, by = c("GEOID", "index")
-    ) %>%
-      merge(DT.oos.pred.total, by = c("GEOID", "index")) %>%
-      merge(DT.oos.pred.slope, by = c("GEOID", "index")) %>%
-      merge(DT.oos.pred.water, by = c("GEOID", "index")) %>%
-      merge(DT.oos.pred.wetlands, by = c("GEOID", "index"))
-    
-    return(DT.oos.pred)
-    
+    return(DT.oos.pred.all)
   }
   
   list.out <- lapply(indices, f_get_xgboost_lu_predictions)
   
-  if (importance == FALSE) {
+  if (!importance) {
     DT.oos.pred.panel <- rbindlist(list.out)
-    DT.oos.pred.panel <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
-    return(DT.oos.pred.panel)
+    final_out <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
+    pred_cols <- names(final_out)[grepl("lu_ml_xgboost", names(final_out))]
+    setcolorder(final_out, unique(c("GEOID", spatial_group, "index", "hp.target", pred_cols)))
+    return(final_out)
   } else {
-    
-    DT.oos.pred.panel <- rbindlist(lapply(list.out, \(x) x$DT.oos.pred)) %>%
-      merge(DT.hp, by = c("GEOID", "index")) %>%
-      setcolorder(c("GEOID", "index", "hp.target", "lu_ml_xgboost"))
-    DT.xgb.importance.panel <- rbindlist(lapply(list.out, \(x) x$DT.xgb.importance))
-    DT.xgb.shap.panel <- rbindlist(lapply(list.out, \(x) x$DT.xgb.shap))
-    DT.xgb.shap.interactions.panel <- lapply(
-      list.out, \(x) x$DT.xgb.shap.interactions
-    ) %>%
-      rbindlist()
+    DT.oos.pred.panel <- rbindlist(lapply(list.out, \(x) x$DT.oos.pred)) %>% merge(DT.hp, by = c("GEOID", "index"))
+    setcolorder(DT.oos.pred.panel, unique(c("GEOID", spatial_group, "index", "hp.target", "lu_ml_xgboost")))
     
     return(list(
       DT.oos.pred.panel = DT.oos.pred.panel,
-      DT.xgb.importance.panel = DT.xgb.importance.panel,
-      DT.xgb.shap.panel = DT.xgb.shap.panel,
-      DT.xgb.shap.interactions.panel = DT.xgb.shap.interactions.panel
+      DT.xgb.importance.panel = rbindlist(lapply(list.out, \(x) x$DT.xgb.importance)),
+      DT.xgb.shap.panel = rbindlist(lapply(list.out, \(x) x$DT.xgb.shap)),
+      DT.xgb.shap.interactions.panel = rbindlist(lapply(list.out, \(x) x$DT.xgb.shap.interactions))
     ))
-    
   }
-  
 }
