@@ -7,7 +7,7 @@
 lu_ml_xgboost_time_varying(
   DT.hp,
   DT.lu,
-  spatial_group = "GEOID",
+  spatial.group = "GEOID",
   repeats = 5,
   folds = 5,
   compute.lu.ml.parts = FALSE,
@@ -19,13 +19,13 @@ lu_ml_xgboost_time_varying(
 \arguments{
 \item{DT.hp}{A data.table containing house price data with columns 'GEOID',
 'index' (Date), and 'hp.target' (house price target variable). It must also
-contain the column specified in \code{spatial_group}.}
+contain the column specified in \code{spatial.group}.}
 
 \item{DT.lu}{A data.table containing land use data with 'GEOID' as the first
 column and other columns representing land use features (typically containing
 the string "unavailable").}
 
-\item{spatial_group}{A string specifying the column name in \code{DT.hp} to use for
+\item{spatial.group}{A string specifying the column name in \code{DT.hp} to use for
 spatial cross-validation. Defaults to \code{"GEOID"}. If set to a higher-level
 geography (e.g., \code{"cz20"} for Commuting Zones or \code{"stfp"} for State), the
 function performs \strong{Grouped K-Fold Cross-Validation}, ensuring that no data
@@ -55,7 +55,7 @@ internally manage parallel processing via \code{future}. Defaults to FALSE.}
 \value{
 If \code{importance = FALSE}, returns a \code{data.table} containing the original
 house price data merged with out-of-sample predictions. The columns are
-ordered: \code{GEOID}, \code{spatial_group} (if not GEOID), \code{index}, \code{hp.target},
+ordered: \code{GEOID}, \code{spatial.group} (if not GEOID), \code{index}, \code{hp.target},
 and \code{lu_ml_xgboost}.
 
 If \code{importance = TRUE}, returns a list:
@@ -73,7 +73,7 @@ by a spatial variable—to assess model performance and prevent spatial data lea
 \details{
 The function performs the following steps:
 \enumerate{
-\item Identifies unique spatial units based on the \code{spatial_group} column.
+\item Identifies unique spatial units based on the \code{spatial.group} column.
 \item For each time index, it splits the data into K-folds based on those groups.
 \item For each fold, it identifies a "tuning" set (75\% of training groups) and
 a "validation" set (25\% of training groups).
@@ -84,7 +84,7 @@ predicts on the held-out spatial groups.
 \item Aggregates predictions across all repeats and folds.
 }
 
-By using a \code{spatial_group} broader than \code{GEOID}, the function ensures the model
+By using a \code{spatial.group} broader than \code{GEOID}, the function ensures the model
 learns structural relationships that generalize across regions, mitigating
 concerns about spatial autocorrelation and data leakage.
 }
@@ -97,7 +97,7 @@ res <- lu_ml_xgboost_time_varying(DT.hp = dt_hp, DT.lu = dt_lu)
 res_cz <- lu_ml_xgboost_time_varying(
   DT.hp = dt_hp, 
   DT.lu = dt_lu, 
-  spatial_group = "cz20"
+  spatial.group = "cz20"
 )
 }
 }

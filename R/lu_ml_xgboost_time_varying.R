@@ -6,11 +6,11 @@
 #'
 #' @param DT.hp A data.table containing house price data with columns 'GEOID',
 #'   'index' (Date), and 'hp.target' (house price target variable). It must also 
-#'   contain the column specified in `spatial_group`.
+#'   contain the column specified in `spatial.group`.
 #' @param DT.lu A data.table containing land use data with 'GEOID' as the first
 #'   column and other columns representing land use features (typically containing 
 #'   the string "unavailable").
-#' @param spatial_group A string specifying the column name in `DT.hp` to use for 
+#' @param spatial.group A string specifying the column name in `DT.hp` to use for 
 #'   spatial cross-validation. Defaults to `"GEOID"`. If set to a higher-level 
 #'   geography (e.g., `"cz20"` for Commuting Zones or `"stfp"` for State), the 
 #'   function performs **Grouped K-Fold Cross-Validation**, ensuring that no data 
@@ -33,7 +33,7 @@
 #'
 #' @return If `importance = FALSE`, returns a `data.table` containing the original 
 #'   house price data merged with out-of-sample predictions. The columns are 
-#'   ordered: `GEOID`, `spatial_group` (if not GEOID), `index`, `hp.target`, 
+#'   ordered: `GEOID`, `spatial.group` (if not GEOID), `index`, `hp.target`, 
 #'   and `lu_ml_xgboost`.
 #'
 #'   If `importance = TRUE`, returns a list:
@@ -46,7 +46,7 @@
 #' @details
 #' The function performs the following steps:
 #' \enumerate{
-#'   \item Identifies unique spatial units based on the `spatial_group` column.
+#'   \item Identifies unique spatial units based on the `spatial.group` column.
 #'   \item For each time index, it splits the data into K-folds based on those groups.
 #'   \item For each fold, it identifies a "tuning" set (75% of training groups) and 
 #'     a "validation" set (25% of training groups).
@@ -57,7 +57,7 @@
 #'   \item Aggregates predictions across all repeats and folds.
 #' }
 #'
-#' By using a `spatial_group` broader than `GEOID`, the function ensures the model 
+#' By using a `spatial.group` broader than `GEOID`, the function ensures the model 
 #' learns structural relationships that generalize across regions, mitigating 
 #' concerns about spatial autocorrelation and data leakage.
 #'
@@ -76,12 +76,12 @@
 #' res_cz <- lu_ml_xgboost_time_varying(
 #'   DT.hp = dt_hp, 
 #'   DT.lu = dt_lu, 
-#'   spatial_group = "cz20"
+#'   spatial.group = "cz20"
 #' )
 #' }
 #' @export
 lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu, 
-                                       spatial_group = "GEOID",
+                                       spatial.group = "GEOID",
                                        repeats = 5, folds = 5,
                                        compute.lu.ml.parts = FALSE, seed = 123,
                                        importance = FALSE, run_in_parallel = FALSE) {
@@ -95,14 +95,14 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu,
     stop("Error: You cannot set both `compute.lu.ml.parts` and `importance` to TRUE.")
   }
   
-  if (!(spatial_group %in% names(DT.hp))) {
-    stop(paste0("Error: spatial_group column '", spatial_group, "' not found in DT.hp."))
+  if (!(spatial.group %in% names(DT.hp))) {
+    stop(paste0("Error: spatial.group column '", spatial.group, "' not found in DT.hp."))
   }
 
   DT.hp <- copy(DT.hp) %>% setorder(GEOID, index)
   DT.lu <- copy(DT.lu) %>% setorder(GEOID)
   
-  required_cols <- unique(c("GEOID", "index", "hp.target", spatial_group))
+  required_cols <- unique(c("GEOID", "index", "hp.target", spatial.group))
   DT.hp <- DT.hp[, ..required_cols]
   
   if (DT.lu[, .N, by = GEOID][, any(N > 1)]) stop("Error: DT.lu has duplicate GEOIDs.")
@@ -186,7 +186,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu,
   # --- Prediction Loop ---
   f_get_xgboost_lu_predictions <- function(index_val) {
     DT <- DT.hp[index == index_val] %>% merge(DT.lu, by = "GEOID")
-    unique_groups <- DT[, unique(get(spatial_group))]
+    unique_groups <- DT[, unique(get(spatial.group))]
     seed.offset <- DT.hp[, which(unique(index) == index_val)]
     
     DT.est <- expand.grid(repeat.id = 1:repeats, fold.id = 1:folds) %>% 
@@ -203,7 +203,7 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu,
     list.pred.all <- future.apply::future_Map(f_train_xgboost, DT = list(DT), 
                                               test.groups = DT.est$test.groups, 
                                               train.seed = DT.est$task.seed, 
-                                              spatial_col = spatial_group, 
+                                              spatial_col = spatial.group, 
                                               importance_flag = importance,
                                               future.seed = TRUE, future.packages = c("xgboost", "data.table"))
     if (run_in_parallel) future::plan(future::sequential())
@@ -237,11 +237,11 @@ lu_ml_xgboost_time_varying <- function(DT.hp, DT.lu,
     DT.oos.pred.panel <- rbindlist(list.out)
     final_out <- merge(DT.hp, DT.oos.pred.panel, by = c("GEOID", "index"))
     pred_cols <- names(final_out)[grepl("lu_ml_xgboost", names(final_out))]
-    setcolorder(final_out, unique(c("GEOID", spatial_group, "index", "hp.target", pred_cols)))
+    setcolorder(final_out, unique(c("GEOID", spatial.group, "index", "hp.target", pred_cols)))
     return(final_out)
   } else {
     DT.oos.pred.panel <- rbindlist(lapply(list.out, \(x) x$DT.oos.pred)) %>% merge(DT.hp, by = c("GEOID", "index"))
-    setcolorder(DT.oos.pred.panel, unique(c("GEOID", spatial_group, "index", "hp.target", "lu_ml_xgboost")))
+    setcolorder(DT.oos.pred.panel, unique(c("GEOID", spatial.group, "index", "hp.target", "lu_ml_xgboost")))
     
     return(list(
       DT.oos.pred.panel = DT.oos.pred.panel,

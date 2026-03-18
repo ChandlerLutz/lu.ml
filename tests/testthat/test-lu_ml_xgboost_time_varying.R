@@ -51,7 +51,7 @@ test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
 
   res_with_stfp_spatial_sampling <- lu_ml_xgboost_time_varying(
     DT.hp = dt_mian_sufi_2014_with_stfp, DT.lu = dt_cnty_lu_2010,
-    spatial_group = "stfp"
+    spatial.group = "stfp"
   )
 
   expect_true(is.data.table(res_with_stfp_spatial_sampling))
