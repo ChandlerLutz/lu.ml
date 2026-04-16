@@ -19,7 +19,7 @@ Imports:
     magrittr,
     superpc,
     withr,
-    xgboost
+    xgboost (< 2.0.0)
 Depends: 
     R (>= 3.5)
 LazyData: true
