@@ -1,4 +1,4 @@
-test_that("lu_ml_xgboost_time_varying() work for Mian and Sufi Data", {
+test_that("lu_ml_xgboost_time_varying() works for Mian and Sufi Data", {
 
   data(dt_mian_sufi_2014)
   data(dt_cnty_lu_2010)
